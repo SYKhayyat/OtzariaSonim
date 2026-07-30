@@ -1,0 +1,31 @@
+# Gradle / build output
+*.iml
+.gradle/
+.kotlin/
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Machine-local SDK paths — not portable
+local.properties
+
+# IDE
+.idea/
+*.iws
+*.ipr
+
+# Packaged output
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Signing keys — never commit
+*.jks
+*.keystore
+keystore.properties
+
+# OS cruft
+.DS_Store
+Thumbs.db
