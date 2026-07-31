@@ -64,11 +64,36 @@ class LibraryActivity : Activity() {
     override fun onRequestPermissionsResult(
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
-        start()
+        // grantResults was previously ignored and start() ran either way, so denying
+        // the permission produced a blank screen with no message at all.
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (granted) start() else denied()
+    }
+
+    private fun denied() {
+        header.text = "אין הרשאה"
+        list.adapter = RowAdapter(
+            this,
+            listOf(
+                "האפליקציה צריכה הרשאת קריאה כדי לפתוח את הספרייה.",
+                "",
+                "הרשאות ← אחסון ← אפשר,",
+                "או לחצו על מקש התפריט כדי לנסות שוב."
+            ),
+            18f
+        )
+        list.requestFocus()
     }
 
     private fun start() {
-        if (Otzaria.isReady()) showDir(Otzaria.textsDir) else promptForRoot()
+        when {
+            Otzaria.isReady() -> showDir(Otzaria.textsDir)
+            // the folder is there but unlistable — that is a denied permission, not a
+            // wrong path, and asking for a path again would never fix it
+            Otzaria.isUnreadable() -> denied()
+            else -> promptForRoot()
+        }
     }
 
     private fun showDir(dir: File) {
@@ -121,7 +146,7 @@ class LibraryActivity : Activity() {
         val input = EditText(this).apply { setText(Otzaria.root) }
         AlertDialog.Builder(this)
             .setTitle("תיקיית הספרייה")
-            .setMessage("נתיב לתיקייה שמכילה את אוצריא ואת links")
+            .setMessage("נתיב לתיקייה שמכילה את אוצריא ואת idx")
             .setView(input)
             .setPositiveButton("שמור") { _, _ ->
                 Otzaria.saveRoot(this, input.text.toString())

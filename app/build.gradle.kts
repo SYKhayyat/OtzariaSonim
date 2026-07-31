@@ -29,10 +29,18 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    testOptions {
+        // BookIndex is pure java.io, but it lives inside an object that imports
+        // android.content.Context. Default-values keeps the stubbed android.jar
+        // from throwing on class init instead of failing a real assertion.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
-    // Intentionally zero AndroidX / Material deps: plain Android Views only,
-    // smallest APK, best D-pad behaviour, trivially 32-bit safe. org.json is
-    // part of the Android platform (android.jar) — no dependency needed.
+    // Intentionally zero AndroidX / Material deps in the APK: plain Android Views
+    // only, smallest APK, best D-pad behaviour, trivially 32-bit safe.
+    // junit is testImplementation — it is not packaged and does not reach the phone.
+    testImplementation("junit:junit:4.13.2")
 }

@@ -73,9 +73,6 @@ class ReaderActivity : Activity() {
         )
         setContentView(rootView)
 
-        lines = Otzaria.readLines(path)
-        headings = Otzaria.headings(path, lines)
-
         list.setOnItemClickListener { _, _, pos, _ ->
             if (pctEntry) { commitPct(); return@setOnItemClickListener }
             val lineNo = pos + 1
@@ -96,27 +93,49 @@ class ReaderActivity : Activity() {
             }
         })
 
-        render()
-
-        // Reopen where we left off; otherwise big books open on the chapter picker.
-        val saved = Settings.lastPosition(this, bookTitle)
-        when {
-            saved in lines.indices -> list.setSelection(saved)
-            lines.size > BIG_BOOK_LINES && headings.isNotEmpty() -> openToc()
-        }
+        load()
     }
 
-    /** (Re)build the segment list using the current per-book commentator filter. */
-    private fun render() {
+    /**
+     * Read the book off the main thread. ערוך השולחן is 31 MB / 26,776 lines and even
+     * with the sidecar it takes seconds to read; doing that in onCreate is an ANR
+     * waiting for a slower card. The list stays empty and the header says so until
+     * the work lands.
+     */
+    private fun load() {
+        header.text = "$bookTitle\nטוען…"
         val selected = Settings.selectedCommentators(this, bookTitle)
-        commented = Otzaria.commentedLines(bookTitle, selected)
-        val a = adapter
-        if (a == null) {
-            adapter = ReaderAdapter(this, lines, commented, Settings.fontSize(this))
-            list.adapter = adapter
-        } else {
-            a.refresh(commented)
-        }
+        Thread {
+            val ls = Otzaria.readLines(path)
+            val hs = Otzaria.headings(path, ls)
+            val cm = Otzaria.commentedLines(bookTitle, selected)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                lines = ls; headings = hs; commented = cm
+                adapter = ReaderAdapter(this, lines, commented, Settings.fontSize(this))
+                list.adapter = adapter
+                list.requestFocus()
+
+                // Reopen where we left off; otherwise big books open on the chapter picker.
+                val saved = Settings.lastPosition(this, bookTitle)
+                when {
+                    saved in lines.indices -> list.setSelection(saved)
+                    lines.size > BIG_BOOK_LINES && headings.isNotEmpty() -> openToc()
+                }
+                updateHeader(list.firstVisiblePosition)
+            }
+        }.start()
+    }
+
+    /**
+     * Re-apply the per-book commentator filter. This is a bitmap scan over the
+     * sidecar's marks — tens of KB — so it is cheap enough to stay on the main
+     * thread, unlike the whole-JSON parse it replaced.
+     */
+    private fun render() {
+        if (lines.isEmpty()) return
+        commented = Otzaria.commentedLines(bookTitle, Settings.selectedCommentators(this, bookTitle))
+        adapter?.refresh(commented)
         list.requestFocus()
         updateHeader(list.firstVisiblePosition)
     }
