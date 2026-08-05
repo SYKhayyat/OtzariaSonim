@@ -149,29 +149,59 @@ open to `אין מפרשים`, and strips Sefaria's inline `<i data-commentator>
 48% of שולחן ערוך's bytes — which also makes phrases like `יתגבר כארי` contiguous
 again.
 
-### ⚠️ Preserve the folder structure
+Measured over the whole corpus: only **483 of 6,618 books** contain an anchor or a BOM,
+so packing the text saves 24 MB of 3.39 GB overall — 0.7%, which is nothing. But it is
+not spread evenly, and it lands where it matters most:
+
+| sefer | before | after |
+|---|---|---|
+| שולחן ערוך, חושן משפט | 5.45 MB | **2.19 MB** |
+| שולחן ערוך, יורה דעה | 3.79 MB | **1.88 MB** |
+| שולחן ערוך, אורח חיים | 3.36 MB | **1.76 MB** |
+| טור | 9.13 MB | **6.32 MB** |
+
+`ReaderActivity` loads a book **whole** into a 192 MB heap, so halving the Shulchan Arukh
+is a real win on the four seforim most likely to be open. Use `--text-all` to re-pack an
+existing full library: plain `--all` ships only the linked books and their targets, which
+on this corpus is **981 books fewer** than the phone already has.
+
+One anchor in 6,618 books survives the strip — `<i data-commentator="Beur HaGra"><small>
+</small></i>` in שולחן ערוך יורה דעה wraps a tag rather than being empty, so the pattern's
+`\s*` body does not match it. It renders as a thin space. Measured, not guessed at.
+
+### ⚠️ Preserve the folder structure — and mind which side you name
 The categories you see are just the folders. Copy Otzaria's tree **intact** — do **not**
-flatten it. There's an `adb push` gotcha: pushing a subfolder *into an existing folder*
-drops a level. Push each **category** to a matching path, e.g.:
+flatten it.
+
+`adb push SRC DST` behaves differently depending on whether **DST already exists**:
+
+| | |
+|---|---|
+| DST does **not** exist | it is created *as* SRC. Name the full path: `push "אוצריא\משנה" ".../אוצריא/משנה"` |
+| DST **does** exist | SRC is placed *inside* it → `.../אוצריא/משנה/משנה`. Name the **parent**: `push "אוצריא\משנה" ".../אוצריא"` |
+
+So the right command changes once the library is on the phone. Getting this wrong is
+silent — the push reports success, the files land one level too deep, and the app goes on
+reading the old copies. Check afterwards:
 
 ```powershell
-# adb from PowerShell (Git Bash mangles the /storage/... paths — use PowerShell)
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-cd C:\Users\Administrator\Downloads\otzaria_latest
+$dev = "/storage/emulated/0/Otzaria/אוצריא"
 
-# one category, structure preserved (note the explicit ...\<Category> on the remote side):
-& $adb push "אוצריא\משנה"       "/storage/emulated/0/Otzaria/אוצריא/משנה"
-& $adb push "אוצריא\תנך"        "/storage/emulated/0/Otzaria/אוצריא/תנך"
-& $adb push "אוצריא\תלמוד בבלי" "/storage/emulated/0/Otzaria/אוצריא/תלמוד בבלי"
-& $adb push "אוצריא\הלכה"       "/storage/emulated/0/Otzaria/אוצריא/הלכה"
-# ...and any other categories you want (Rambam/Tur/Beis Yosef live under הלכה).
+# FIRST time (nothing on the phone yet) — name the full remote path:
+& $adb push "אוצריא\משנה" "$dev/משנה"
+
+# UPDATING (the folder is already there) — name the PARENT:
+& $adb push "אוצריא\משנה" $dev
+
+# then prove it did not nest:
+& $adb shell "[ -d '$dev/משנה/משנה' ] && echo NESTED-BAD || echo ok"
 ```
 
-Or, to get the **entire** Otzaria structure in one shot (large — the full tree is ~4 GB of
-text; pick a subset to stay near your ~1.4 GB budget):
+Or, for the **entire** tree in one shot (~4 GB — pick a subset to stay near your budget):
 
 ```powershell
-& $adb push "אוצריא" "/storage/emulated/0/Otzaria/אוצריא"
+& $adb push "אוצריא" "/storage/emulated/0/Otzaria"      # note: the PARENT
 ```
 
 ### ⚠️ Sidecar version — push the APK first

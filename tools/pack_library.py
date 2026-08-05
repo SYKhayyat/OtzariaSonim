@@ -267,6 +267,11 @@ def main() -> int:
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--bases", default=linkkind.DEFAULT_TABLE,
                     help="base_texts.json — which sefer comments on which")
+    ap.add_argument("--text-all", action="store_true",
+                    help="ship EVERY book's text, not only the linked ones and their "
+                         "targets. Use when re-packing a device that already holds the "
+                         "whole corpus: plain --all ships 981 books fewer on this "
+                         "corpus, which would delete them from the phone.")
     ap.add_argument("--idx-only", action="store_true",
                     help="write only idx/, no text. Safe because stripping anchors never "
                          "changes a line COUNT, so the sidecar addresses an unpacked "
@@ -312,6 +317,52 @@ def main() -> int:
         for i, b in enumerate(chosen, 1):
             g = load_links(root, b)
             blob = build_idx(b, g, count_lines(texts[b]), rel_all, bases, kind_tally)
+            del g
+            if blob is not None:
+                with open(os.path.join(out, "idx", b + ".idx"), "wb") as fh:
+                    fh.write(blob)
+                idx_bytes += len(blob)
+                written += 1
+                h = struct.unpack(HEADER, blob[:HEADER_SIZE])
+                if h[7] > worst[2]:
+                    worst = (b, h[3], h[7])
+            lp = os.path.join(root, "links", b + "_links.json")
+            if os.path.isfile(lp):
+                src_bytes += os.path.getsize(lp)
+            if i % 250 == 0 or i == len(chosen):
+                print(f"    {i}/{len(chosen)}  ({written} written, {idx_bytes/2**20:.1f} MB)")
+    elif args.text_all:
+        # ------------------------------------------- every book, text + idx
+        # No transitive set to work out, so no link graph is held: text first,
+        # then sidecars one at a time. This is the mode to use when the device
+        # already has the whole corpus and you want it PACKED rather than
+        # SUBSETTED -- `--all` alone ships only the linked books and their
+        # targets, which would quietly delete the rest from the phone.
+        needed = set(texts)
+        print(f"  {len(needed)} books to ship (every book in the corpus)")
+
+        print("writing text ...")
+        rel_of: dict[str, str] = {}
+        lines_of: dict[str, int] = {}
+        bytes_in = bytes_out = 0
+        for i, title in enumerate(sorted(needed), 1):
+            src = texts[title]
+            rel = os.path.relpath(src, base).replace("\\", "/")
+            dst = os.path.join(out, TEXTS_DIRNAME, *rel.split("/"))
+            bytes_in += os.path.getsize(src)
+            lines_of[title] = emit_text(src, dst)
+            bytes_out += os.path.getsize(dst)
+            rel_of[title] = f"{TEXTS_DIRNAME}/{rel}"
+            if i % 500 == 0 or i == len(needed):
+                print(f"    {i}/{len(needed)}  ({bytes_out/2**30:.2f} GB written)")
+        saved = 100 * (1 - bytes_out / bytes_in) if bytes_in else 0
+        print(f"  text {bytes_in/2**30:.2f} GB -> {bytes_out/2**30:.2f} GB "
+              f"({saved:.1f}% saved stripping anchors and BOMs)")
+
+        print("writing sidecars ...")
+        for i, b in enumerate(chosen, 1):
+            g = load_links(root, b)
+            blob = build_idx(b, g, lines_of.get(b, 0), rel_of, bases, kind_tally)
             del g
             if blob is not None:
                 with open(os.path.join(out, "idx", b + ".idx"), "wb") as fh:

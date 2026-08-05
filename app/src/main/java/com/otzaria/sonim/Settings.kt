@@ -133,7 +133,28 @@ object Settings {
     fun resume(ctx: Context, bookTitle: String, lines: List<String>): Resume? =
         resolveResume(lastPosition(ctx, bookTitle), lastPositionText(ctx, bookTitle), lines)
 
-    private fun fingerprint(line: String) = line.trim().take(FINGERPRINT)
+    /**
+     * What the reader would SEE on that line, not the bytes it is stored as.
+     *
+     * Fingerprinting the raw line looks equivalent and is not. Re-packing the
+     * library strips Sefaria's inline `<i data-commentator>` anchors, which begin
+     * 3,694 of שולחן ערוך יורה דעה's 4,105 lines — so every bookmark in the 483
+     * books that carry them changed its first 40 characters while pointing at the
+     * very same segment, and the reader was sent back to the top of the sefer and
+     * told it had changed. It had not: `emit_text` never moves a line.
+     *
+     * Stripping the markup first compares the words, which is the thing that
+     * actually has to be the same. A genuine edit still fails to match.
+     */
+    private val tagRx = Regex("<[^>]*>")
+    private val spaceRx = Regex("\\s+")
+
+    /** Public so the tests use the real one rather than a copy that can drift. */
+    fun fingerprint(line: String) =
+        // NBSP is not \s in Java's regex, and this corpus is full of it,
+        // so it is normalised by hand before the runs are collapsed.
+        spaceRx.replace(tagRx.replace(line, " ").replace('\u00A0', ' '), " ")
+            .trim().take(FINGERPRINT)
 
     /**
      * Pure so it can be tested without a device. null means "no saved place" —

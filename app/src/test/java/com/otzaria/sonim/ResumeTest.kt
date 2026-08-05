@@ -95,6 +95,43 @@ class ResumeTest {
         assertFalse(r.lost)
     }
 
+    /**
+     * A re-pack that strips Sefaria's inline anchors changes the bytes of a line
+     * without changing the segment or its number. The bookmark must survive that.
+     *
+     * Found on the device, not here: after the anchors were stripped from שולחן
+     * ערוך יורה דעה, reopening it announced "the sefer changed" and went to the
+     * top — from a line whose *words* were identical. 3,694 of that sefer's 4,105
+     * lines begin with an anchor, so it was every bookmark in it, and in 482 other
+     * books besides.
+     */
+    @Test
+    fun strippingInlineMarkupDoesNotLoseThePlace() {
+        val before = listOf(
+            "<h2>סימן קה</h2>",
+            "(ז) <i data-commentator=\"Siftei Kohen\" data-order=\"17\"></i>הא דחתיכת איסור אוסרת חברתה",
+            "(ח) <i data-commentator=\"Beur HaGra\"></i>כוליא שצלאו בחלבו אינו אוסר"
+        )
+        val after = listOf(
+            "<h2>סימן קה</h2>",
+            "(ז) הא דחתיכת איסור אוסרת חברתה",
+            "(ח) כוליא שצלאו בחלבו אינו אוסר"
+        )
+        // saved against the un-stripped text…
+        val fp = Settings.fingerprint(before[1])
+        val r = Settings.resolveResume(1, fp, after)!!
+        assertEquals("the same segment, not the top of the sefer", 1, r.pos)
+        assertFalse("nothing actually moved, so say nothing", r.lost)
+    }
+
+    /** …and a genuine change to the words is still caught. */
+    @Test
+    fun aRealEditIsStillNoticed() {
+        val fp = Settings.fingerprint("(ז) <i data-commentator=\"X\"></i>הא דחתיכת איסור אוסרת חברתה")
+        val r = Settings.resolveResume(1, fp, listOf("<h2>א</h2>", "(ז) טקסט אחר לגמרי", "עוד"))!!
+        assertTrue(r.lost)
+    }
+
     // ------------------------------------------- the per-book commentator choice
 
     private val yorehDeah = listOf(
