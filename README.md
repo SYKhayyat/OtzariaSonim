@@ -269,10 +269,15 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
 ### Backlog
 - Optional: mount the larger **org** corpus as read-only books (no meforshim).
 - A "recently read" list on the library screen (the per-book last-place is already stored).
-- `tools/base_texts.json` covers 5,682 of the 6,615 books. The other **933 are Otzaria's
-  own**, with no Sefaria schema, so their links are kept unclassified (treated as
-  מפרשים — no evidence is not evidence of absence). Girsa's Otzaria-side ingest could
-  supply those.
+- ~~`base_texts.json` misses 933 Otzaria-only books~~ — **checked, and it is not a gap
+  worth work.** 891 of the 933 have no links at all, so they never reach a picker. The
+  42 that do are two families (38 × `חברותא על <מסכת>`, 4 × `הערות על שות הרשבא`), and
+  every edge touching one is `הערות על חברותא על X` → `חברותא על X`, where "commentary"
+  is the right answer anyway. `pack_library.py` now prints the share of links decided on
+  **no evidence**: it is **39 pairs, 0.3%**. Watch that number; do not assume it.
+  Otzaria's own `metadata.json` covers 0 of the 42, and `hebrew_books.csv` /
+  `otzar_books.csv` are printing-house catalogues with no base-text field — so
+  otzaria-main has nothing to add here either.
 - Swap the packer's link *source* to Girsa's corpus once its graph is unioned; the
   `.idx` format doesn't change. `tools/girsa_coverage.py` now reports **82%** commentator
   coverage on a 12-book sample, not the 33% previously quoted — that figure was an

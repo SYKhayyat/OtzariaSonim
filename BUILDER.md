@@ -79,8 +79,35 @@ link that is not a commentary is relabelled and shown under its own heading.
 guarded on actually having evidence — a sefer that declares nothing, and that
 nothing declares, has no hop to test, and demoting on that is demoting on absence.
 
-**Not addressed.** The 933 books Sefaria has no schema for keep their links
-unclassified. That is deliberate, and it is the largest remaining gap.
+**The 933 books Sefaria has no schema for.** Filed here first as "the largest
+remaining gap", which was wrong, and the correction is the interesting part.
+
+- **891 of the 933 have no links file at all**, so they never reach a picker.
+- The 42 that do are two families: 38 × `חברותא על <מסכת>` and
+  4 × `הערות על שות הרשבא חלק ד–ז` (those four have no links either).
+- **Every** edge in the corpus whose target Sefaria does not know — all 59,404 of
+  them, 39 distinct pairs — is `הערות על חברותא על X` → `חברותא על X`, where
+  "commentary" is the correct answer regardless.
+
+Three candidate sources were checked and all three are dead:
+
+| source | verdict |
+|---|---|
+| Otzaria's folder tree (`.../מפרשים/...`) | speaks for 207 of 4,799 books, 82% right when it does, and says **nothing** for all 42. `הלכה/מפרשים/` is a generic bucket, not "commentaries on הלכה" |
+| `metadata.json` (both copies) | covers **0** of the 42 |
+| `hebrew_books.csv`, `otzar_books.csv` | printing-house catalogues — place, year, subject tags. No base-text field |
+
+**What was done instead of guessing:** `pack_library.py` now reports which rule
+decided every book↔commentator pair, so the share resting on no declaration is a
+measured number. Over the full library it is **39 pairs, 0.3%**:
+
+```
+declared 36.8% · declared mirror 36.9% · one hop 13.0% · independent target 9.4%
+further off 2.1% · base unstated 1.4% · self link 0.1% · no evidence 0.3%
+```
+
+A gap that is counted every pack is a question somebody can answer later. This one
+turned out not to need answering — but that is only knowable because it is counted.
 
 ---
 

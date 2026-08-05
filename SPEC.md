@@ -123,9 +123,13 @@ that hides the `<h1>` on line 1 from any `^`-anchored pattern — so the sefer's
 was missing from its TOC. Strip it where the file is read (`Otzaria.readLines`,
 `pack_library.emit_text` via `utf-8-sig`), not in each regex.
 
+Books Sefaria does not know keep their links unclassified. Measured: that is
+**39 book-commentator pairs, 0.3%** of the graph, all of them notes on חברותא,
+where "commentary" is right anyway. `pack_library.py` prints the figure on every
+run — check it rather than assuming it.
+
 ## Backlog (post-v1)
 - Optional: org-only books as read-only (no meforshim) for extra breadth.
-- The 933 books with no Sefaria schema have unclassified links.
 
 *(Done: font size, chapter TOC, %-jump, resume-last-place, the binary links index
 — now v2, carrying what each link is.)*

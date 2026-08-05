@@ -183,10 +183,12 @@ def build_idx(book: str, links, line_count: int, rel_of: dict[str, str],
     n_comm = len(names)
     # What each of these books is to `book`. Computed once per name, not per link:
     # שולחן ערוך אורח חיים has 27 names and 103,406 links.
-    kinds = [bases.kind(book, n) for n in names]
+    decided = [bases.classify(book, n) for n in names]
+    kinds = [k for k, _ in decided]
     if tally is not None:
-        for k in kinds:
+        for k, why in decided:
             tally[k] = tally.get(k, 0) + 1
+            tally[why] = tally.get(why, 0) + 1
 
     stride = (line_count + 7) // 8
     marks = bytearray(n_comm * stride)
@@ -383,12 +385,23 @@ def main() -> int:
     print(f"  worst open cost: {worst[0]} — {worst[1]} commentators, {worst[2]/1024:.0f} KB")
     # Reported, never assumed. Before base_texts.json existed every one of these
     # was offered as a מפרש, and roughly half of them were not one.
-    total_names = sum(kind_tally.values())
+    total_names = sum(kind_tally.get(k, 0)
+                      for k in (linkkind.MEFARESH, linkkind.BASE, linkkind.RELATED))
     if total_names:
         for k in (linkkind.MEFARESH, linkkind.BASE, linkkind.RELATED):
             n = kind_tally.get(k, 0)
             print(f"  {linkkind.KIND_NAMES[k]:9} {n:7d} book-commentator pairs "
                   f"({100*n/total_names:.1f}%)")
+        # Which rule decided, so the share of the graph resting on no declaration
+        # at all is a number rather than an assumption. "no evidence" is the one
+        # to watch: it is a link kept as a מפרש only because nothing contradicts it.
+        print("  decided by:")
+        for why in ("declared", "declared mirror", "one hop", "base unstated",
+                    "target is an independent work", "declared on something further off",
+                    "self link", "no evidence"):
+            n = kind_tally.get(why, 0)
+            if n:
+                print(f"    {why:38} {n:7d}  ({100*n/total_names:.1f}%)")
     if src_bytes:
         print(f"  links {src_bytes/2**20:.0f} MB JSON -> {idx_bytes/2**20:.1f} MB idx "
               f"({100*(1-idx_bytes/src_bytes):.0f}% smaller)")

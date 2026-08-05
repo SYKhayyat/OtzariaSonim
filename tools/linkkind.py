@@ -89,10 +89,21 @@ class Bases:
 
     def kind(self, src: str, tgt: str) -> int:
         """What `tgt` is to `src`, for an edge Otzaria labelled commentary/targum."""
+        return self.classify(src, tgt)[0]
+
+    def why(self, src: str, tgt: str) -> str:
+        """The rule that decided it. Reported by the packer so the share of links
+        resting on no evidence at all is a number somebody can look at, rather than
+        a thing everyone assumes is small."""
+        return self.classify(src, tgt)[1]
+
+    def classify(self, src: str, tgt: str) -> tuple[int, str]:
+        """(kind, the rule that decided it). The rules are ordered, and the order
+        is load-bearing — see the comment on each branch for what breaks without it."""
         if tgt == src:
             # A book is not its own commentary; the corpus has a handful of these
             # and they would put a sefer in its own מפרשים list.
-            return RELATED
+            return RELATED, "self link"
 
         # The two declared answers come first, and in this order. Testing
         # independence before them is wrong and was the first version of this
@@ -100,7 +111,7 @@ class Bases:
         # came back RELATED and the reader lost the one label that says
         # "this is the sefer you are reading a commentary on".
         if src in self.bases_of(tgt):
-            return MEFARESH                     # declared, both ends agree
+            return MEFARESH, "declared"         # both ends agree
 
         # The mirror edge. `משנה ברורה_links.json` points at
         # `שולחן ערוך, אורח חיים` 17,478 times; src declares tgt as its base, so
@@ -108,7 +119,7 @@ class Bases:
         # in the Shulchan Arukh's own file the right way round, so nothing is
         # lost by not calling it a מפרש here.
         if tgt in self.bases_of(src):
-            return BASE
+            return BASE, "declared mirror"
 
         dep = self.is_dependent(tgt)
 
@@ -116,15 +127,22 @@ class Bases:
         # schema anywhere. There is no evidence to demote on, and demoting on
         # absence of evidence would silently empty those books' panels. Girsa
         # leaves undeclared edges alone for the same reason; so do we.
+        #
+        # This branch is the one worth watching, so the packer counts it by name.
+        # Measured 5 Aug 2026: of the 933, only 42 appear in the link graph at all,
+        # and every edge touching one is `הערות על חברותא על X` -> `חברותא על X`,
+        # where "commentary" is the right answer anyway. The branch is a real gap
+        # in principle and an empty one in this corpus -- which is only knowable
+        # because it is counted.
         if dep is None:
-            return MEFARESH
+            return MEFARESH, "no evidence"
 
         # Sefaria knows this work and says it depends on nothing. That is a fact
         # about the work, not a gap in the data: an independent sefer cannot be a
         # commentary on anything, whichever way the link was written. This is the
         # branch that stops ויקרא being offered as a מפרש on the Shulchan Arukh.
         if not dep:
-            return RELATED
+            return RELATED, "target is an independent work"
 
         # Declared a commentary, but on something else. Sefaria pins a work to one
         # level and Otzaria's links reach both, so this bucket holds real
@@ -143,11 +161,11 @@ class Bases:
         # demoting on absence of evidence: it emptied בית יוסף's מפרשים list
         # completely, דרישה, פרישה and דרכי משה included.
         if bases and len(near) > 1 and not (set(bases) & near):
-            return RELATED
+            return RELATED, "declared on something further off"
 
         # Either Sefaria never said what it comments on (בית יוסף, תורה תמימה --
         # 36 such works), or it comments on something one hop from here.
-        return MEFARESH
+        return MEFARESH, ("base unstated" if not bases else "one hop")
 
 
 def load(path: str = DEFAULT_TABLE) -> Bases:
@@ -204,7 +222,27 @@ def _selftest() -> int:
             fails += 1
             print(f"  FAIL {src!r} <- {tgt!r}: got {KIND_NAMES[got]}, "
                   f"want {KIND_NAMES[want]} ({why})")
-    print(f"  {len(cases)} cases over {len(b)} works, "
+
+    # The rule each answer came from, because the counts the packer prints are
+    # only worth reading if the labels on them are right. The last pair is the
+    # whole of the "no evidence" branch in this corpus: 38 books of חברותא and
+    # their notes, neither of which Sefaria has ever heard of.
+    reasons = [
+        ("שולחן ערוך, אורח חיים", "משנה ברורה", "declared"),
+        ("משנה ברורה", "שולחן ערוך, אורח חיים", "declared mirror"),
+        ("שולחן ערוך, יורה דעה", "ויקרא", "target is an independent work"),
+        ("בראשית", "שפתי חכמים", "one hop"),
+        ("שבת", "ריף בבא בתרא", "declared on something further off"),
+        ("טור", "בית יוסף", "base unstated"),
+        ("חברותא על בבא קמא", "הערות על חברותא על בבא קמא", "no evidence"),
+    ]
+    for src, tgt, want in reasons:
+        got = b.why(src, tgt)
+        if got != want:
+            fails += 1
+            print(f"  FAIL reason {src!r} <- {tgt!r}: got {got!r}, want {want!r}")
+
+    print(f"  {len(cases)} kinds + {len(reasons)} reasons over {len(b)} works, "
           f"{'all pass' if not fails else f'{fails} FAILED'}")
     return fails
 
