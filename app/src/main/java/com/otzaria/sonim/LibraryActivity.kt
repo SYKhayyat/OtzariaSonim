@@ -39,7 +39,7 @@ class LibraryActivity : Activity() {
             gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_RTL
         }
-        list = ListView(this)
+        list = Ui.list(this, "ספרייה")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -105,7 +105,11 @@ class LibraryActivity : Activity() {
         val labels: List<CharSequence> = entries.map { f ->
             if (f.isDirectory) "📁  " + f.name else f.name.removeSuffix(".txt")
         }
-        list.adapter = RowAdapter(this, labels, 18f)
+        // The folder emoji is announced as "file folder" in English, mid-Hebrew.
+        list.adapter = RowAdapter(this, labels, 18f, describe = { i ->
+            val f = entries[i]
+            if (f.isDirectory) "תיקייה, ${f.name}" else "ספר, ${f.name.removeSuffix(".txt")}"
+        })
         list.requestFocus()
         if (entries.isNotEmpty()) list.setSelection(0)
     }

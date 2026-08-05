@@ -38,7 +38,7 @@ class CommentaryActivity : Activity() {
             gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_RTL
         }
-        list = ListView(this)
+        list = Ui.list(this, "מפרשים על הקטע")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -49,19 +49,38 @@ class CommentaryActivity : Activity() {
         )
         setContentView(rootView)
 
-        val selected = Settings.selectedCommentators(this, book)
-        val mefs = Otzaria.meforshimFor(book, line, selected)
+        val mefs = Otzaria.meforshimFor(book, line, Settings.activeSelection(this, book))
         header.text = if (mefs.isEmpty()) "אין מפרשים" else "מפרשים ($book)"
 
-        val rows: List<CharSequence> = mefs.map { m ->
-            SpannableStringBuilder()
-                .append(Ui.html("<b>" + m.ref + "</b>"))
-                .append("\n")
-                .append(Ui.html(m.content))
+        // [Otzaria.meforshimFor] returns מפרשים, then the base text, then
+        // cross-references. A heading goes in wherever that changes — without one,
+        // a reader of משנה ברורה sees the Shulchan Arukh se'if under the word
+        // "מפרשים" and is being told something untrue about it.
+        val rows = ArrayList<CharSequence>(mefs.size + 2)
+        var lastKind = -1
+        for (m in mefs) {
+            if (m.kind != lastKind) {
+                lastKind = m.kind
+                sectionTitle(m.kind)?.let { rows.add(Ui.html("<b>— $it —</b>")) }
+            }
+            rows.add(
+                SpannableStringBuilder()
+                    .append(Ui.html("<b>" + m.ref + "</b>"))
+                    .append("\n")
+                    .append(Ui.html(m.content))
+            )
         }
         adapter = RowAdapter(this, rows, Settings.fontSize(this))
         list.adapter = adapter
         list.requestFocus()
+    }
+
+    /** null for מפרשים — the header already says that, and the common case is a
+     * screen of nothing else, which should look exactly as it always did. */
+    private fun sectionTitle(kind: Int): String? = when (kind) {
+        Otzaria.KIND_BASE -> "מקור"
+        Otzaria.KIND_RELATED -> "קישורים נוספים"
+        else -> null
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

@@ -65,6 +65,30 @@ To show commentaries on the segment at book line N:
 Verified: Mishnah Berakhot line 3 ("מאימתי קורין את שמע בערבית") ->
 Rambam file line 5 ("מאימתי קורין את שמע בערבין וכו': כבר בארנו...") = correct.
 
+### ⚠️ Step 1 is necessary and NOT sufficient (MEASURED, 5 Aug 2026)
+`Conection Type == commentary` does **not** mean the target is a commentary on the
+source. The graph is undirected in practice and stores nearly every edge twice, once
+each way. Over all 5,819 links files, of 3,567,284 commentary/targum edges whose target
+is on the shelf:
+
+| | |
+|---|---|
+| target really is a commentary on the source | 51.0% |
+| the **mirror** of another edge (source comments on target) | **43.7%** |
+| target is an independent work merely cross-referenced | 5.2% |
+
+So `רשי על בראשית_links.json` claims בראשית is a commentary on Rashi, `משנה ברורה`'s
+claims the Shulchan Arukh is one on it (17,478 times), and שולחן ערוך יורה דעה's claims
+ויקרא is. Otzaria's own Flutter app has this defect too — `getAvailableCommentators`
+filters on the type and stops.
+
+**Direction is read, not guessed.** Sefaria states `dependence` and `base_text_titles`
+per work; `tools/build_bases.py` rewrites that against Otzaria's filenames into
+`tools/base_texts.json` (5,682 of 6,615 books), and `tools/linkkind.py` applies it.
+Guessing from the title is forbidden: `X על Y` would attach `רשי על ברכות` to the
+Yerushalmi masechta of the same name. Books Sefaria does not know keep their links
+unclassified — absence of evidence is not evidence.
+
 ## v1 library scope (user pick)
 Tanach, Mishnah, Talmud Bavli, Halacha (Shulchan Aruch), Rambam, Tur, Beis Yosef +
 their meforshim. Budget ~1.4 GB acceptable. Subset the shipped `אוצריא/` + `links/`
@@ -93,8 +117,15 @@ accordingly; size = ~622 KB/book avg. Full corpus is 6.3 GB (don't ship all).
   `gradle wrapper --gradle-version 8.14.3` then `gradlew assembleDebug`.
 - Install:  `adb install -r app/build/outputs/apk/debug/app-debug.apk`
 
+### Book text format, addendum (MEASURED)
+**190 of the 6,618 `.txt` files begin with a UTF-8 BOM (U+FEFF)**, and in 185 of them
+that hides the `<h1>` on line 1 from any `^`-anchored pattern — so the sefer's own title
+was missing from its TOC. Strip it where the file is read (`Otzaria.readLines`,
+`pack_library.emit_text` via `utf-8-sig`), not in each regex.
+
 ## Backlog (post-v1)
-- Font-size control; jump-to-chapter (parse `<h2>` TOC); bookmarks/history.
-- Optional preprocessing: flatten each book + its meforshim into a compact per-book
-  bundle and shrink the 2.3 GB of JSON links to a small binary index.
 - Optional: org-only books as read-only (no meforshim) for extra breadth.
+- The 933 books with no Sefaria schema have unclassified links.
+
+*(Done: font size, chapter TOC, %-jump, resume-last-place, the binary links index
+— now v2, carrying what each link is.)*

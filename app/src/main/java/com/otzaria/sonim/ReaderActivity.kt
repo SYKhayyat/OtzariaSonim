@@ -62,7 +62,7 @@ class ReaderActivity : Activity() {
             gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_RTL
         }
-        list = ListView(this)
+        list = Ui.list(this, "קטעי הספר $bookTitle")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -104,7 +104,7 @@ class ReaderActivity : Activity() {
      */
     private fun load() {
         header.text = "$bookTitle\nטוען…"
-        val selected = Settings.selectedCommentators(this, bookTitle)
+        val selected = Settings.activeSelection(this, bookTitle)
         Thread {
             val ls = Otzaria.readLines(path)
             val hs = Otzaria.headings(path, ls)
@@ -116,11 +116,20 @@ class ReaderActivity : Activity() {
                 list.adapter = adapter
                 list.requestFocus()
 
-                // Reopen where we left off; otherwise big books open on the chapter picker.
-                val saved = Settings.lastPosition(this, bookTitle)
+                // Reopen where we left off; otherwise big books open on the chapter
+                // picker. The saved place is checked against the text that was
+                // there, because the library is re-downloadable and a bare line
+                // index does not survive a sefer gaining a line upstream.
+                val saved = Settings.resume(this, bookTitle, lines)
                 when {
-                    saved in lines.indices -> list.setSelection(saved)
-                    lines.size > BIG_BOOK_LINES && headings.isNotEmpty() -> openToc()
+                    saved == null || saved.lost ->
+                        if (lines.size > BIG_BOOK_LINES && headings.isNotEmpty()) openToc()
+                    else -> list.setSelection(saved.pos)
+                }
+                if (saved?.lost == true) {
+                    // Said out loud. A reader who is silently 300 lines from where
+                    // they stopped concludes the app loses their place at random.
+                    Toast.makeText(this, "הספר השתנה מאז — חזרה להתחלה", Toast.LENGTH_LONG).show()
                 }
                 updateHeader(list.firstVisiblePosition)
             }
@@ -134,7 +143,7 @@ class ReaderActivity : Activity() {
      */
     private fun render() {
         if (lines.isEmpty()) return
-        commented = Otzaria.commentedLines(bookTitle, Settings.selectedCommentators(this, bookTitle))
+        commented = Otzaria.commentedLines(bookTitle, Settings.activeSelection(this, bookTitle))
         adapter?.refresh(commented)
         list.requestFocus()
         updateHeader(list.firstVisiblePosition)
@@ -210,7 +219,9 @@ class ReaderActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
-        if (lines.isNotEmpty()) Settings.setLastPosition(this, bookTitle, list.firstVisiblePosition)
+        if (lines.isEmpty()) return
+        val pos = list.firstVisiblePosition.coerceIn(0, lines.size - 1)
+        Settings.setLastPosition(this, bookTitle, pos, lines[pos])
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

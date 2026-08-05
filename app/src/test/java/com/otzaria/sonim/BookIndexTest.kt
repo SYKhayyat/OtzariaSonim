@@ -25,8 +25,17 @@ class BookIndexTest {
 
     // ---------------------------------------------------------------- helpers
 
-    /** A minimal encoder written from the format spec, not from the packer. */
-    private class Builder(val lines: Int, val commentators: List<Pair<String, String>>) {
+    /**
+     * A minimal encoder written from the format spec, not from the packer.
+     * [version] 1 omits the per-commentator kind byte, which is how the old
+     * sidecars on a phone that has not been re-packed still look.
+     */
+    private class Builder(
+        val lines: Int,
+        val commentators: List<Pair<String, String>>,
+        val version: Int = 2,
+        val kinds: List<Int> = commentators.map { Otzaria.KIND_MEFARESH }
+    ) {
         // line -> list of (commentator index, target line, ref)
         val entries = LinkedHashMap<Int, MutableList<Triple<Int, Int, String>>>()
 
@@ -41,11 +50,12 @@ class BookIndexTest {
             )
 
             val ctable = ByteArrayOutputStream()
-            for ((name, path) in commentators) {
-                val n = name.toByteArray(Charsets.UTF_8)
-                val p = path.toByteArray(Charsets.UTF_8)
+            for ((i, c) in commentators.withIndex()) {
+                val n = c.first.toByteArray(Charsets.UTF_8)
+                val p = c.second.toByteArray(Charsets.UTF_8)
                 ctable.write(be16(n.size)); ctable.write(n)
                 ctable.write(be16(p.size)); ctable.write(p)
+                if (version >= 2) ctable.write(byteArrayOf(kinds[i].toByte()))
             }
 
             val stride = (lines + 7) / 8
@@ -82,7 +92,7 @@ class BookIndexTest {
 
             val out = ByteArrayOutputStream()
             out.write("OZSI".toByteArray(Charsets.US_ASCII))
-            out.write(byteArrayOf(1))
+            out.write(byteArrayOf(version.toByte()))
             out.write(be32(lines)); out.write(be16(commentators.size))
             out.write(be32(offC)); out.write(be32(offM)); out.write(be32(offD))
             out.write(be32(offE)); out.write(be32(offR))
@@ -171,6 +181,72 @@ class BookIndexTest {
         // headings carry no commentary; line 3 is the first mishnah
         assertTrue(ix.markedLines(null).contains(3))
         assertTrue(!ix.markedLines(null).contains(1))
+    }
+
+    /**
+     * The defect this whole format change exists for, in miniature: a book whose
+     * links point at a commentary on it, at the sefer it is itself a commentary on,
+     * and at an unrelated work it merely cites. Before v2 all three were called
+     * "commentators" and all three were checked by default.
+     */
+    @Test
+    fun tellsACommentaryFromABaseTextFromACrossReference() {
+        val bytes = Builder(
+            lines = 10,
+            commentators = listOf(
+                "ביאור הלכה" to "אוצריא/א/ביאור הלכה.txt",
+                "שולחן ערוך, אורח חיים" to "אוצריא/ב/שולחן ערוך, אורח חיים.txt",
+                "בן איש חי" to "אוצריא/ג/בן איש חי.txt"
+            ),
+            kinds = listOf(Otzaria.KIND_MEFARESH, Otzaria.KIND_BASE, Otzaria.KIND_RELATED)
+        )
+            .add(4, 0, 1, "ביאור הלכה")
+            .add(4, 1, 2, "שולחן ערוך")
+            .add(4, 2, 3, "בן איש חי")
+            .build()
+
+        val ix = Otzaria.BookIndex.open(tempIdx(bytes))!!
+        assertEquals(listOf("ביאור הלכה"), ix.named(Otzaria.KIND_MEFARESH))
+        assertEquals(listOf("שולחן ערוך, אורח חיים"), ix.named(Otzaria.KIND_BASE))
+        assertEquals(listOf("בן איש חי"), ix.named(Otzaria.KIND_RELATED))
+        assertEquals(
+            listOf(Otzaria.KIND_MEFARESH, Otzaria.KIND_BASE, Otzaria.KIND_RELATED),
+            ix.on(4).map { it.kind }
+        )
+    }
+
+    /**
+     * A v1 sidecar — one already on a phone — must keep working, and everything in
+     * it reads as a commentary because that is precisely what v1 asserted. Failing
+     * closed here would turn "your library is one repack out of date" into "this
+     * sefer has no meforshim at all".
+     */
+    @Test
+    fun readsAVersionOneSidecarAsAllCommentary() {
+        val bytes = Builder(
+            lines = 10,
+            commentators = listOf("רש\"י" to "אוצריא/א/רשי.txt", "בראשית" to "אוצריא/ב/בראשית.txt"),
+            version = 1
+        ).add(2, 0, 1, "א").add(2, 1, 1, "ב").build()
+
+        val ix = Otzaria.BookIndex.open(tempIdx(bytes))!!
+        assertEquals(2, ix.named(Otzaria.KIND_MEFARESH).size)
+        assertTrue(ix.on(2).all { it.kind == Otzaria.KIND_MEFARESH })
+    }
+
+    /** The real packed sidecar is v2 and says what each linked book is. */
+    @Test
+    fun theRealPackedSidecarCarriesKinds() {
+        val ix = Otzaria.BookIndex.open(fixture())!!
+        assertEquals(ix.names.size, ix.kinds.size)
+        assertTrue(
+            "every kind must be one of the three",
+            ix.kinds.all { it in Otzaria.KIND_MEFARESH..Otzaria.KIND_RELATED }
+        )
+        // משנה ברכות is a base text: everything linked to it is a commentary on it,
+        // and nothing linked to it is the sefer IT comments on.
+        assertTrue(ix.named(Otzaria.KIND_MEFARESH).isNotEmpty())
+        assertEquals(emptyList<String>(), ix.named(Otzaria.KIND_BASE))
     }
 
     /** A missing or corrupt sidecar means "no meforshim", never a crash. The old

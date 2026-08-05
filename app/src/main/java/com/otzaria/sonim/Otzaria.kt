@@ -37,6 +37,26 @@ object Otzaria {
     /** One heading (<h1..6>) in a book: its level, plain text, and 0-based list position. */
     data class Heading(val level: Int, val text: String, val pos: Int)
 
+    /**
+     * What a linked book IS to the book you are reading. Otzaria's link graph says
+     * `commentary` and stops there, and it stores nearly every edge twice — once
+     * each way — so "everything this book links to" was never the list of its
+     * מפרשים. It was that list, plus the book's own base text, plus whatever else
+     * Sefaria cross-referenced. The picker offered ויקרא as a commentator on
+     * שולחן ערוך יורה דעה, and offered שולחן ערוך to a reader of משנה ברורה.
+     *
+     * The sidecar now carries one byte per commentator saying which of these it
+     * is, decided at pack time from Sefaria's own declarations
+     * (tools/linkkind.py). Nothing is dropped — a link that is not a commentary
+     * is shown under its own heading instead of lying about what it is.
+     */
+    const val KIND_MEFARESH = 0   // a commentary on this book
+    const val KIND_BASE = 1       // the sefer THIS book is a commentary on
+    const val KIND_RELATED = 2    // an independent work, cross-referenced
+
+    /** A linked book and what it is to the book being read. */
+    data class Commentator(val name: String, val kind: Int)
+
     // A single 34 MB commentary would blow up an unbounded cache on a 2 GB phone, so the
     // line cache is bounded by total characters (LRU) and files above [BIG_FILE_BYTES] are
     // streamed a line at a time instead of retained whole.
@@ -86,10 +106,28 @@ object Otzaria {
         return if (name.endsWith(".txt", ignoreCase = true)) name.dropLast(4) else name
     }
 
+    /**
+     * A UTF-8 byte-order mark, which Kotlin's `readLines` hands back as the first
+     * character of the first line. Roughly 150 of the library's 6,618 books start
+     * with one, and every regex here is anchored at `^` — so `<h1>` on line 1 is
+     * not recognised as a heading and those books open with their own title
+     * missing from the TOC (BUILDER.md S4). Stripped once, here, where the file is
+     * read: teaching [headingRx] about it would fix this call site and leave the
+     * next one.
+     */
+    private const val BOM = '﻿'
+
+    private fun String.withoutBom() = if (isNotEmpty() && this[0] == BOM) substring(1) else this
+
     /** Read every line of a file, uncached. Callers that hold the whole book use this. */
     fun readLines(path: String): List<String> {
         val f = File(path)
-        return if (f.isFile) f.readLines(Charsets.UTF_8) else emptyList()
+        if (!f.isFile) return emptyList()
+        val lines = f.readLines(Charsets.UTF_8)
+        if (lines.isEmpty()) return lines
+        val first = lines[0].withoutBom()
+        if (first === lines[0]) return lines          // the common case, untouched
+        return ArrayList<String>(lines.size).apply { add(first); addAll(lines.subList(1, lines.size)) }
     }
 
     /**
@@ -127,7 +165,7 @@ object Otzaria {
             for (line in seq) {
                 i++
                 if (i in wanted) {
-                    res[i] = line
+                    res[i] = if (i == 1) line.withoutBom() else line
                     if (res.size == wanted.size) return@useLines
                 }
             }
@@ -160,7 +198,8 @@ object Otzaria {
         val commentator: String,
         val relPath: String,     // path of the target book, relative to [root]
         val targetLine: Int,     // 1-based line in that file
-        val ref: String          // heRef — the human reference
+        val ref: String,         // heRef — the human reference
+        val kind: Int            // KIND_MEFARESH / KIND_BASE / KIND_RELATED
     )
 
     /**
@@ -170,23 +209,35 @@ object Otzaria {
      *
      * Layout (all multi-byte fields big-endian, so DataInputStream order):
      *   "OZSI" u8 ver | u32 lines | u16 commentators | 5×u32 section offsets | u32 nEntries
-     *   commentators : (u16 len, name)(u16 len, relative path) ×n
+     *   commentators : (u16 len, name)(u16 len, relative path)(u8 kind, v2 only) ×n
      *   marks        : n bitmaps of `lines` bits, bit L-1 set => that commentator is on line L
      *   linedir      : (u32 first entry, u16 count) × lines
      *   entries      : (u16 commentator, u32 target line, u32 ref offset)
      *   refs         : (u16 len, UTF-8) blob
+     *
+     * v1 and v2 differ only in that one byte, and the header is byte-identical
+     * because every section offset is stored rather than computed. So a v1 sidecar
+     * still opens here — every link reads as [KIND_MEFARESH], which is exactly what
+     * v1 claimed and exactly what v2 exists to stop claiming. A v2 sidecar under an
+     * older APK is refused outright, so push the APK first.
      */
     class BookIndex private constructor(
         private val file: File,
         val lineCount: Int,
         val names: List<String>,
         private val paths: List<String>,
+        val kinds: IntArray,
         private val marks: ByteArray,
         private val stride: Int,
         private val lineDir: ByteArray,
         private val offEntries: Long,
         private val offRefs: Long
     ) {
+
+        /** The linked books of one kind, in the sidecar's (sorted) order. */
+        fun named(kind: Int): List<String> =
+            names.filterIndexed { i, _ -> kinds[i] == kind }
+
 
         /** 1-based lines carrying a commentary from [selected] (null = every commentator). */
         fun markedLines(selected: Set<String>?): Set<Int> {
@@ -229,7 +280,8 @@ object Otzaria {
                     val len = raf.readUnsignedShort()
                     val sb = ByteArray(len)
                     raf.readFully(sb)
-                    out.add(LinkRef(names[ci], paths[ci], target, String(sb, Charsets.UTF_8)))
+                    out.add(LinkRef(names[ci], paths[ci], target,
+                        String(sb, Charsets.UTF_8), kinds[ci]))
                 }
             }
             return out
@@ -237,6 +289,7 @@ object Otzaria {
 
         companion object {
             private const val MAGIC = 0x4F5A5349   // "OZSI"
+            private const val VERSION = 2          // the newest this reader understands
 
             // magic 0..3 | ver 4 | lines 5..8 | nComm 9..10 | offC 11..14 |
             // offM 15..18 | offD 19..22 | offE 23..26 | offR 27..30 | nEntries 31..34
@@ -260,7 +313,9 @@ object Otzaria {
                         val head = ByteArray(HEADER_SIZE)
                         if (raf.length() < head.size) return null
                         raf.readFully(head)
-                        if (be32(head, 0) != MAGIC || (head[4].toInt() and 0xFF) != 1) return null
+                        if (be32(head, 0) != MAGIC) return null
+                        val ver = head[4].toInt() and 0xFF
+                        if (ver !in 1..VERSION) return null
                         val lines = be32(head, 5)
                         val nComm = be16(head, 9)
                         val offC = be32(head, 11).toLong()
@@ -273,20 +328,25 @@ object Otzaria {
                         raf.seek(offC)
                         val names = ArrayList<String>(nComm)
                         val paths = ArrayList<String>(nComm)
-                        repeat(nComm) {
+                        val kinds = IntArray(nComm)
+                        repeat(nComm) { i ->
                             var n = raf.readUnsignedShort()
                             var b = ByteArray(n); raf.readFully(b)
                             names.add(String(b, Charsets.UTF_8))
                             n = raf.readUnsignedShort()
                             b = ByteArray(n); raf.readFully(b)
                             paths.add(String(b, Charsets.UTF_8))
+                            // A v1 sidecar has no kind byte; everything in it was
+                            // asserted to be a commentary, so that is what it reads as.
+                            val k = if (ver >= 2) raf.readUnsignedByte() else KIND_MEFARESH
+                            kinds[i] = if (k in KIND_MEFARESH..KIND_RELATED) k else KIND_RELATED
                         }
                         val stride = (lines + 7) / 8
                         val marks = ByteArray(nComm * stride)
                         raf.seek(offM); raf.readFully(marks)
                         val dir = ByteArray(lines * 6)
                         raf.seek(offD); raf.readFully(dir)
-                        return BookIndex(f, lines, names, paths, marks, stride, dir, offE, offR)
+                        return BookIndex(f, lines, names, paths, kinds, marks, stride, dir, offE, offR)
                     }
                 } catch (t: Throwable) {
                     // Throwable, not Exception: OutOfMemoryError is an Error, and catching
@@ -307,31 +367,57 @@ object Otzaria {
     }
 
     /**
-     * Commentators with at least one link in this book, in a stable order.
-     * This is the pool the per-book filter picks from — it is the sidecar's
-     * commentator table, so it costs nothing beyond opening the file.
+     * Every book linked from this one, in a stable order, each saying what it IS to
+     * this one. This is the pool the per-book filter picks from — it is the
+     * sidecar's commentator table, so it costs nothing beyond opening the file.
+     *
+     * The name-only version this replaced is what let the picker call all three
+     * kinds "commentators".
      */
-    fun availableCommentators(bookTitle: String): List<String> =
-        indexFor(bookTitle)?.names ?: emptyList()
+    fun commentators(bookTitle: String): List<Commentator> {
+        val ix = indexFor(bookTitle) ?: return emptyList()
+        return ix.names.mapIndexed { i, n -> Commentator(n, ix.kinds[i]) }
+    }
+
+    /**
+     * What to show a reader who has never chosen for this book: the מפרשים, plus
+     * the sefer it is itself a commentary on. Cross-references stay off — they are
+     * the bucket that used to make the picker unusable, and a reader who wants
+     * them is one keypress away.
+     */
+    fun defaultSelection(bookTitle: String): Set<String> {
+        val ix = indexFor(bookTitle) ?: return emptySet()
+        return ix.names.filterIndexed { i, _ -> ix.kinds[i] != KIND_RELATED }.toSet()
+    }
+
+    /** [selected] if the reader has chosen, otherwise [defaultSelection]. */
+    fun effectiveSelection(bookTitle: String, selected: Set<String>?): Set<String> =
+        selected ?: defaultSelection(bookTitle)
 
     /**
      * Which 1-based source lines carry a commentary from a selected commentator.
-     * [selected] == null means "no filter" (all commentators count).
+     * [selected] == null means the reader has never chosen — see [defaultSelection].
+     * It used to mean "every commentator", which is how a ◆ came to promise
+     * meforshim on lines whose only link was a cross-reference.
      */
     fun commentedLines(bookTitle: String, selected: Set<String>?): Set<Int> =
-        indexFor(bookTitle)?.markedLines(selected) ?: emptySet()
+        indexFor(bookTitle)?.markedLines(effectiveSelection(bookTitle, selected)) ?: emptySet()
 
     /** Resolved meforshim on a given 1-based source line: ref + rendered content text. */
-    data class Meforish(val ref: String, val content: String, val commentator: String)
+    data class Meforish(val ref: String, val content: String, val commentator: String, val kind: Int)
 
     /**
-     * Meforshim on [sourceLine], keeping only [selected] commentators (null = all).
-     * Each target file is opened once; giant commentaries are streamed a line at a
-     * time, so opening meforshim can't pin memory however big the target is.
+     * Meforshim on [sourceLine], keeping only [selected] commentators (null = the
+     * default choice for this book). Each target file is opened once; giant
+     * commentaries are streamed a line at a time, so opening meforshim can't pin
+     * memory however big the target is. The result is ordered מפרשים, then the
+     * base text, then cross-references — so the panel reads top-down as
+     * "commentary first, source second".
      */
     fun meforshimFor(bookTitle: String, sourceLine: Int, selected: Set<String>?): List<Meforish> {
+        val keep = effectiveSelection(bookTitle, selected)
         val relevant = (indexFor(bookTitle)?.on(sourceLine) ?: emptyList())
-            .filter { selected == null || selected.contains(it.commentator) }
+            .filter { keep.contains(it.commentator) }
         if (relevant.isEmpty()) return emptyList()
 
         val content = HashMap<String, String>()            // "relPath#line" -> text
@@ -350,8 +436,9 @@ object Otzaria {
         val result = ArrayList<Meforish>(relevant.size)
         for (l in relevant) {
             val text = content["${l.relPath}#${l.targetLine}"] ?: continue
-            result.add(Meforish(l.ref, text, l.commentator))
+            result.add(Meforish(l.ref, text, l.commentator, l.kind))
         }
+        result.sortBy { it.kind }        // stable: מפרשים, then מקור, then קשור
         return result
     }
 }

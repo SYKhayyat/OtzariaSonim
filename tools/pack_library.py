@@ -20,10 +20,11 @@ lets (2) be a seek. Nothing is ever parsed whole on the phone.
 
 Sourcing
 --------
-Link data comes from Otzaria, not from Girsa, because Girsa's ingested graph
-resolves ~33% of the commentators Otzaria's does (see tools/girsa_coverage.py and
-BUILDER.md W32 in the Girsa repo). Swapping the source later does not change the
-output format.
+Link *data* comes from Otzaria, because Girsa's ingested graph resolves far fewer
+commentators (see tools/girsa_coverage.py). Link *direction* comes from Sefaria's
+own declarations by way of tools/base_texts.json, because Otzaria's graph does not
+carry one -- see tools/linkkind.py for what that fixes and why the title is never
+parsed to guess it.
 
 Usage
 -----
@@ -42,13 +43,22 @@ import struct
 import sys
 import time
 
+import linkkind
+
 sys.stdout.reconfigure(encoding="utf-8")
 
 OTZARIA = r"C:\Users\Administrator\Downloads\otzaria_latest"
 TEXTS_DIRNAME = "אוצריא"
 
 MAGIC = b"OZSI"
-VERSION = 1
+# v2 adds one byte per commentator to the commentator table: what that book is to
+# this one (linkkind.MEFARESH / BASE / RELATED). The header is byte-identical to
+# v1 -- the section offsets after the commentator table are computed, so widening
+# an entry moves them without changing the layout. A v1 sidecar therefore still
+# parses under a v2 reader (everything reads as MEFARESH, i.e. the old
+# behaviour); a v2 sidecar under a v1 reader is rejected outright and the book
+# shows no meforshim. Push the APK before the idx, not after.
+VERSION = 2
 # every multi-byte field is big-endian, matching the Kotlin reader in Otzaria.kt
 HEADER = ">4sBIHIIIIII"          # magic, ver, nLines, nComm, 5 offsets, nEntries
 HEADER_SIZE = struct.calcsize(HEADER)     # 35
@@ -130,7 +140,13 @@ def emit_text(src: str, dst: str) -> int:
     also what makes --idx-only safe against an unpacked corpus."""
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     n = 0
-    with open(src, encoding="utf-8") as fi, open(dst, "w", encoding="utf-8", newline="\n") as fo:
+    # `utf-8-sig` eats a leading BOM if there is one and is a no-op otherwise. On
+    # the order of 150 of the 6,618 books start with U+FEFF, which pushes their
+    # `<h1>` title out of reach of a `^<h` anchor and leaves the sefer's own name
+    # missing from its TOC (BUILDER.md S4). The reader tolerates it too, for an
+    # unpacked corpus; this stops it reaching a packed one at all.
+    with open(src, encoding="utf-8-sig") as fi, \
+            open(dst, "w", encoding="utf-8", newline="\n") as fo:
         for line in fi:
             fo.write(ANCHOR_RX.sub("", line.rstrip("\n")) + "\n")
             n += 1
@@ -145,11 +161,12 @@ def count_lines(path: str) -> int:
     return n
 
 
-def build_idx(links, line_count: int, rel_of: dict[str, str]) -> bytes | None:
+def build_idx(book: str, links, line_count: int, rel_of: dict[str, str],
+              bases: linkkind.Bases, tally: dict[int, int] | None = None) -> bytes | None:
     """The sidecar. Sections, in order:
 
         header
-        commentators   name + relative path of each target book
+        commentators   name + relative path + kind of each target book
         marks          nComm bitmaps of nLines bits -- answers the diamond
         linedir        per line: (first entry index, count)
         entries        (commentator, target line, ref offset)
@@ -164,6 +181,12 @@ def build_idx(links, line_count: int, rel_of: dict[str, str]) -> bytes | None:
     names = sorted({t for (_, t, _, _) in kept})
     cidx = {n: i for i, n in enumerate(names)}
     n_comm = len(names)
+    # What each of these books is to `book`. Computed once per name, not per link:
+    # שולחן ערוך אורח חיים has 27 names and 103,406 links.
+    kinds = [bases.kind(book, n) for n in names]
+    if tally is not None:
+        for k in kinds:
+            tally[k] = tally.get(k, 0) + 1
 
     stride = (line_count + 7) // 8
     marks = bytearray(n_comm * stride)
@@ -197,10 +220,12 @@ def build_idx(links, line_count: int, rel_of: dict[str, str]) -> bytes | None:
             entries += struct.pack(ENTRY, ci, tl, off)
 
     ctable = bytearray()
-    for n in names:
+    for n, kind in zip(names, kinds):
         nb = n.encode("utf-8")
         pb = rel_of[n].encode("utf-8")
-        ctable += struct.pack(">H", len(nb)) + nb + struct.pack(">H", len(pb)) + pb
+        ctable += (struct.pack(">H", len(nb)) + nb +
+                   struct.pack(">H", len(pb)) + pb +
+                   struct.pack(">B", kind))
 
     off_c = HEADER_SIZE
     off_m = off_c + len(ctable)
@@ -238,6 +263,8 @@ def main() -> int:
     ap.add_argument("--categories", nargs="*", default=[])
     ap.add_argument("--books", nargs="*", default=[])
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--bases", default=linkkind.DEFAULT_TABLE,
+                    help="base_texts.json — which sefer comments on which")
     ap.add_argument("--idx-only", action="store_true",
                     help="write only idx/, no text. Safe because stripping anchors never "
                          "changes a line COUNT, so the sidecar addresses an unpacked "
@@ -261,6 +288,9 @@ def main() -> int:
         return 2
     print(f"  {len(chosen)} books selected for indexing")
 
+    bases = linkkind.load(args.bases)
+    print(f"  {len(bases)} works in the base-text table ({args.bases})")
+
     def rel_for(title: str):
         p = texts.get(title)
         return None if p is None else f"{TEXTS_DIRNAME}/" + os.path.relpath(p, base).replace("\\", "/")
@@ -268,6 +298,7 @@ def main() -> int:
     os.makedirs(os.path.join(out, "idx"), exist_ok=True)
     idx_bytes = src_bytes = written = 0
     worst = ("", 0, 0)
+    kind_tally: dict[int, int] = {}
 
     # --------------------------------------------------------- idx only
     # One book at a time, nothing retained. The text path below holds every chosen
@@ -278,7 +309,7 @@ def main() -> int:
         rel_all = {t: r for t in texts if (r := rel_for(t))}
         for i, b in enumerate(chosen, 1):
             g = load_links(root, b)
-            blob = build_idx(g, count_lines(texts[b]), rel_all)
+            blob = build_idx(b, g, count_lines(texts[b]), rel_all, bases, kind_tally)
             del g
             if blob is not None:
                 with open(os.path.join(out, "idx", b + ".idx"), "wb") as fh:
@@ -301,10 +332,16 @@ def main() -> int:
         for i, b in enumerate(chosen, 1):
             g = load_links(root, b)
             graphs[b] = g
-            needed.update(t for (_, t, _, _) in g if t in texts)
+            # Only מפרשים and the book's own base text earn a place in the ~1.4 GB
+            # the phone has. A RELATED cross-reference is worth showing when the
+            # book it points at happens to be on the shelf already, but not worth
+            # dragging בן איש חי onto the device because the Shulchan Arukh cites
+            # it once. The `t in rel_of` filter in build_idx does the rest.
+            needed.update(t for (_, t, _, _) in g
+                          if t in texts and bases.kind(b, t) != linkkind.RELATED)
             if i % 200 == 0 or i == len(chosen):
                 print(f"    {i}/{len(chosen)}  ({len(needed)} books needed so far)")
-        print(f"  {len(needed)} books to ship (chosen + their commentary targets)")
+        print(f"  {len(needed)} books to ship (chosen + their מפרשים + their base texts)")
 
         print("writing text ...")
         rel_of: dict[str, str] = {}
@@ -326,7 +363,7 @@ def main() -> int:
 
         print("writing sidecars ...")
         for b in chosen:
-            blob = build_idx(graphs[b], lines_of.get(b, 0), rel_of)
+            blob = build_idx(b, graphs[b], lines_of.get(b, 0), rel_of, bases, kind_tally)
             if blob is None:
                 continue
             with open(os.path.join(out, "idx", b + ".idx"), "wb") as fh:
@@ -344,6 +381,14 @@ def main() -> int:
 
     print(f"\n  {written} sidecars, {idx_bytes/2**20:.1f} MB")
     print(f"  worst open cost: {worst[0]} — {worst[1]} commentators, {worst[2]/1024:.0f} KB")
+    # Reported, never assumed. Before base_texts.json existed every one of these
+    # was offered as a מפרש, and roughly half of them were not one.
+    total_names = sum(kind_tally.values())
+    if total_names:
+        for k in (linkkind.MEFARESH, linkkind.BASE, linkkind.RELATED):
+            n = kind_tally.get(k, 0)
+            print(f"  {linkkind.KIND_NAMES[k]:9} {n:7d} book-commentator pairs "
+                  f"({100*n/total_names:.1f}%)")
     if src_bytes:
         print(f"  links {src_bytes/2**20:.0f} MB JSON -> {idx_bytes/2**20:.1f} MB idx "
               f"({100*(1-idx_bytes/src_bytes):.0f}% smaller)")

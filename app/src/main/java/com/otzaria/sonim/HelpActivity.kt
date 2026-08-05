@@ -54,7 +54,7 @@ class HelpActivity : Activity() {
             textDirection = View.TEXT_DIRECTION_LTR
             text = "Help"
         }
-        list = ListView(this)
+        list = Ui.list(this, "Controls help")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)

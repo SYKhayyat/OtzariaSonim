@@ -65,20 +65,66 @@ def he_title_index():
     return idx
 
 
-def girsa_commentators(slug, kinds=("comments-on",)):
+def ingested_slugs():
+    """Every work slug on Girsa's shelf. Slugs contain '/', so a segment id cannot
+    be cut into (work, rest) without knowing the set."""
+    root = os.path.join(GIRSA, "works")
+    out = set()
+    for dirpath, _, files in os.walk(root):
+        if "segments.jsonl" in files:
+            out.add(os.path.relpath(dirpath, root).replace("\\", "/"))
+    return out
+
+
+def work_of(seg_id, ingested):
+    """The work a segment id belongs to: the longest ingested slug that prefixes it.
+
+    This function is the whole of BUILDER.md S1. The line it replaces was
+
+        e["from"].split("girsa:")[1].split("/")[0]
+
+    which takes the work to be everything before the FIRST '/'. 3,591 of Girsa's
+    7,189 work slugs are paths, so that folded every commentary on every masechta
+    of the Bavli -- Rashi, Tosafot, Rif, Rosh, Ritva, Meiri, Shita Mekubetzet --
+    into one bucket named `bavli`, and this tool reported Berakhot as having *one*
+    commentator. It does not. It has forty.
+
+    The numbers that bug produced ("Girsa resolves ~33% of Otzaria's
+    commentators", "Berakhot 2%") were quoted in two repos as a reason not to
+    switch link sources. They were substantially an artefact of this line.
+    """
+    parts = seg_id.removeprefix("girsa:").split("/")
+    for k in range(len(parts), 0, -1):
+        cand = "/".join(parts[:k])
+        if cand in ingested:
+            return cand
+    return None
+
+
+def girsa_commentators(slug, ingested, kinds=("comments-on",)):
     """{source work slug: edge count} for inbound edges onto `slug`."""
     p = os.path.join(GIRSA, "links", *slug.split("/"), "inbound.jsonl")
     out = collections.Counter()
     if not os.path.exists(p):
         return out
+    unresolved = 0
     for line in open(p, encoding="utf-8"):
         e = json.loads(line)
         if kinds is None or e["type"] in kinds:
-            out[e["from"].split("girsa:")[1].split("/")[0]] += 1
+            w = work_of(e["from"], ingested)
+            if w is None:
+                unresolved += 1
+            else:
+                out[w] += 1
+    if unresolved:
+        # Reported, not swallowed. A silently dropped edge looks exactly like an
+        # edge that was never there, which is how the old number stayed believable.
+        print(f"[note] {slug}: {unresolved} inbound edges resolve to no ingested work",
+              file=sys.stderr)
     return out
 
 
-def one_book(book, idx):
+def one_book(book, idx, ingested):
     oz = otzaria_commentators(book)
     if oz is None:
         print(f"{book}: no Otzaria links file")
@@ -87,8 +133,8 @@ def one_book(book, idx):
     if slug is None:
         print(f"{book}: no Girsa work with this he_title")
         return
-    gi = girsa_commentators(slug)
-    any_type = girsa_commentators(slug, kinds=None)
+    gi = girsa_commentators(slug, ingested)
+    any_type = girsa_commentators(slug, ingested, kinds=None)
     print(f"\n=== {book}  ->  girsa:{slug} ===")
     print(f"Otzaria: {sum(oz.values()):>6} edges from {len(oz)} commentators")
     print(f"Girsa:   {sum(gi.values()):>6} edges from {len(gi)} works\n")
@@ -108,7 +154,7 @@ def one_book(book, idx):
         print(f"  {name:<44} {n:>6}   {state}")
 
 
-def sample_table(idx):
+def sample_table(idx, ingested):
     print(f"{'book':<14} {'otzaria':>9} {'girsa':>7} {'kept':>7}")
     tot_o = tot_g = 0
     for b in SAMPLE:
@@ -116,7 +162,7 @@ def sample_table(idx):
         if oz is None or slug is None:
             print(f"{b:<14}   -- not present in both --")
             continue
-        gi = girsa_commentators(slug)
+        gi = girsa_commentators(slug, ingested)
         tot_o += len(oz)
         tot_g += len(gi)
         pct = 100 * len(gi) / len(oz) if oz else 0
@@ -125,9 +171,46 @@ def sample_table(idx):
     print(f"{'TOTAL':<14} {tot_o:>9} {tot_g:>7} {pct:>6.0f}%")
 
 
+def selftest(ingested):
+    """The three asserts that would have caught S1 on day one. The third needs no
+    fixture at all: one masechta with one commentator is not a thing that exists."""
+    fails = 0
+
+    def check(got, want, why):
+        nonlocal fails
+        if got != want:
+            fails += 1
+            print(f"  FAIL {why}: got {got!r}, want {want!r}")
+
+    check(work_of("girsa:bavli/rashi-on-berakhot/10a:1:1#367", ingested),
+          "bavli/rashi-on-berakhot", "a path slug is not its first segment")
+    check(work_of("girsa:turei-zahav-on-shulchan-arukh/orach-chayim/100:1#409", ingested),
+          "turei-zahav-on-shulchan-arukh/orach-chayim", "two-segment slug")
+
+    idx = he_title_index()
+    slug = idx.get(norm("ברכות"))
+    if slug:
+        n = len(girsa_commentators(slug, ingested))
+        if n <= 1:
+            fails += 1
+            print(f"  FAIL בברכות has {n} commentator(s) — a masechta with one "
+                  f"commentator is not a thing that exists")
+        else:
+            print(f"  בברכות: {n} commentators")
+    print(f"  {'all pass' if not fails else f'{fails} FAILED'}")
+    return fails
+
+
 if __name__ == "__main__":
+    if not os.path.isdir(os.path.join(GIRSA, "works")):
+        print(f"no Girsa corpus at {GIRSA}", file=sys.stderr)
+        raise SystemExit(2)
+    slugs = ingested_slugs()
+    print(f"[{len(slugs)} ingested work slugs]", file=sys.stderr)
+    if len(sys.argv) > 1 and sys.argv[1] == "--check":
+        raise SystemExit(1 if selftest(slugs) else 0)
     index = he_title_index()
     if len(sys.argv) > 1:
-        one_book(sys.argv[1], index)
+        one_book(sys.argv[1], index, slugs)
     else:
-        sample_table(index)
+        sample_table(index, slugs)
