@@ -55,7 +55,7 @@ class TocActivity : Activity() {
             gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_RTL
         }
-        list = ListView(this)
+        list = Ui.list(this, "תוכן העניינים")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)

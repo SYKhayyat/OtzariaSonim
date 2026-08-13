@@ -26,6 +26,10 @@ local.properties
 *.keystore
 keystore.properties
 
+# Python bytecode from tools/ (pack_library imports linkkind, so this appears)
+__pycache__/
+*.pyc
+
 # OS cruft
 .DS_Store
 Thumbs.db

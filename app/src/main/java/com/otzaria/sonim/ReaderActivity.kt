@@ -62,7 +62,7 @@ class ReaderActivity : Activity() {
             gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_RTL
         }
-        list = ListView(this)
+        list = Ui.list(this, "קטעי הספר $bookTitle")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -72,9 +72,6 @@ class ReaderActivity : Activity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
         setContentView(rootView)
-
-        lines = Otzaria.readLines(path)
-        headings = Otzaria.headings(path, lines)
 
         list.setOnItemClickListener { _, _, pos, _ ->
             if (pctEntry) { commitPct(); return@setOnItemClickListener }
@@ -96,27 +93,58 @@ class ReaderActivity : Activity() {
             }
         })
 
-        render()
-
-        // Reopen where we left off; otherwise big books open on the chapter picker.
-        val saved = Settings.lastPosition(this, bookTitle)
-        when {
-            saved in lines.indices -> list.setSelection(saved)
-            lines.size > BIG_BOOK_LINES && headings.isNotEmpty() -> openToc()
-        }
+        load()
     }
 
-    /** (Re)build the segment list using the current per-book commentator filter. */
+    /**
+     * Read the book off the main thread. ערוך השולחן is 31 MB / 26,776 lines and even
+     * with the sidecar it takes seconds to read; doing that in onCreate is an ANR
+     * waiting for a slower card. The list stays empty and the header says so until
+     * the work lands.
+     */
+    private fun load() {
+        header.text = "$bookTitle\nטוען…"
+        val selected = Settings.activeSelection(this, bookTitle)
+        Thread {
+            val ls = Otzaria.readLines(path)
+            val hs = Otzaria.headings(path, ls)
+            val cm = Otzaria.commentedLines(bookTitle, selected)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                lines = ls; headings = hs; commented = cm
+                adapter = ReaderAdapter(this, lines, commented, Settings.fontSize(this))
+                list.adapter = adapter
+                list.requestFocus()
+
+                // Reopen where we left off; otherwise big books open on the chapter
+                // picker. The saved place is checked against the text that was
+                // there, because the library is re-downloadable and a bare line
+                // index does not survive a sefer gaining a line upstream.
+                val saved = Settings.resume(this, bookTitle, lines)
+                when {
+                    saved == null || saved.lost ->
+                        if (lines.size > BIG_BOOK_LINES && headings.isNotEmpty()) openToc()
+                    else -> list.setSelection(saved.pos)
+                }
+                if (saved?.lost == true) {
+                    // Said out loud. A reader who is silently 300 lines from where
+                    // they stopped concludes the app loses their place at random.
+                    Toast.makeText(this, "הספר השתנה מאז — חזרה להתחלה", Toast.LENGTH_LONG).show()
+                }
+                updateHeader(list.firstVisiblePosition)
+            }
+        }.start()
+    }
+
+    /**
+     * Re-apply the per-book commentator filter. This is a bitmap scan over the
+     * sidecar's marks — tens of KB — so it is cheap enough to stay on the main
+     * thread, unlike the whole-JSON parse it replaced.
+     */
     private fun render() {
-        val selected = Settings.selectedCommentators(this, bookTitle)
-        commented = Otzaria.commentedLines(bookTitle, selected)
-        val a = adapter
-        if (a == null) {
-            adapter = ReaderAdapter(this, lines, commented, Settings.fontSize(this))
-            list.adapter = adapter
-        } else {
-            a.refresh(commented)
-        }
+        if (lines.isEmpty()) return
+        commented = Otzaria.commentedLines(bookTitle, Settings.activeSelection(this, bookTitle))
+        adapter?.refresh(commented)
         list.requestFocus()
         updateHeader(list.firstVisiblePosition)
     }
@@ -191,7 +219,9 @@ class ReaderActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
-        if (lines.isNotEmpty()) Settings.setLastPosition(this, bookTitle, list.firstVisiblePosition)
+        if (lines.isEmpty()) return
+        val pos = list.firstVisiblePosition.coerceIn(0, lines.size - 1)
+        Settings.setLastPosition(this, bookTitle, pos, lines[pos])
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

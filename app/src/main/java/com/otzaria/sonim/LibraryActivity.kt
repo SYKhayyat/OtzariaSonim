@@ -39,7 +39,7 @@ class LibraryActivity : Activity() {
             gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_RTL
         }
-        list = ListView(this)
+        list = Ui.list(this, "ספרייה")
         rootView.addView(
             header,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -64,11 +64,36 @@ class LibraryActivity : Activity() {
     override fun onRequestPermissionsResult(
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
-        start()
+        // grantResults was previously ignored and start() ran either way, so denying
+        // the permission produced a blank screen with no message at all.
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (granted) start() else denied()
+    }
+
+    private fun denied() {
+        header.text = "אין הרשאה"
+        list.adapter = RowAdapter(
+            this,
+            listOf(
+                "האפליקציה צריכה הרשאת קריאה כדי לפתוח את הספרייה.",
+                "",
+                "הרשאות ← אחסון ← אפשר,",
+                "או לחצו על מקש התפריט כדי לנסות שוב."
+            ),
+            18f
+        )
+        list.requestFocus()
     }
 
     private fun start() {
-        if (Otzaria.isReady()) showDir(Otzaria.textsDir) else promptForRoot()
+        when {
+            Otzaria.isReady() -> showDir(Otzaria.textsDir)
+            // the folder is there but unlistable — that is a denied permission, not a
+            // wrong path, and asking for a path again would never fix it
+            Otzaria.isUnreadable() -> denied()
+            else -> promptForRoot()
+        }
     }
 
     private fun showDir(dir: File) {
@@ -80,7 +105,11 @@ class LibraryActivity : Activity() {
         val labels: List<CharSequence> = entries.map { f ->
             if (f.isDirectory) "📁  " + f.name else f.name.removeSuffix(".txt")
         }
-        list.adapter = RowAdapter(this, labels, 18f)
+        // The folder emoji is announced as "file folder" in English, mid-Hebrew.
+        list.adapter = RowAdapter(this, labels, 18f, describe = { i ->
+            val f = entries[i]
+            if (f.isDirectory) "תיקייה, ${f.name}" else "ספר, ${f.name.removeSuffix(".txt")}"
+        })
         list.requestFocus()
         if (entries.isNotEmpty()) list.setSelection(0)
     }
@@ -121,7 +150,7 @@ class LibraryActivity : Activity() {
         val input = EditText(this).apply { setText(Otzaria.root) }
         AlertDialog.Builder(this)
             .setTitle("תיקיית הספרייה")
-            .setMessage("נתיב לתיקייה שמכילה את אוצריא ואת links")
+            .setMessage("נתיב לתיקייה שמכילה את אוצריא ואת idx")
             .setView(input)
             .setPositiveButton("שמור") { _, _ ->
                 Otzaria.saveRoot(this, input.text.toString())

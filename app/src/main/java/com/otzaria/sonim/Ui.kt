@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.BaseAdapter
+import android.widget.ListView
 import android.widget.TextView
 
 object Ui {
@@ -21,6 +22,35 @@ object Ui {
             Html.fromHtml(s, Html.FROM_HTML_MODE_COMPACT)
         else
             @Suppress("DEPRECATION") Html.fromHtml(s)
+
+    // ------------------------------------------------------------ naming things
+    //
+    // Every screen in this app is one ListView of TextViews, so the rows do carry
+    // an accessible name already: their own text. What they do not carry is the
+    // meaning of the two glyphs this app leans on. `◆` is announced as a lozenge
+    // or skipped entirely, and `☑`/`☐` as ballot boxes — so with TalkBack on, the
+    // one thing the reader screen exists to tell you (this pasuk has meforshim) and
+    // the one thing the picker screen exists to tell you (this one is on) are the
+    // two things it does not say.
+    //
+    // The lists themselves were nameless too: four screens, four ListViews,
+    // announced as "list". [list] is the only way to make one here, and it takes
+    // the name as a required argument, so a nameless list cannot be written —
+    // which is the part that holds when the next screen is added (BUILDER.md S3).
+
+    const val HAS_MEFORSHIM = "◆"
+
+    /** A ListView that cannot exist without being named. */
+    fun list(ctx: Context, name: String): ListView =
+        ListView(ctx).apply { contentDescription = name }
+
+    /** What a screen reader should say for a reader row. */
+    fun describeRow(text: CharSequence, hasMeforshim: Boolean): String =
+        if (hasMeforshim) "יש מפרשים. $text" else text.toString()
+
+    /** What a screen reader should say for one line of the commentator picker. */
+    fun describeChoice(name: String, checked: Boolean): String =
+        if (checked) "$name, נבחר" else "$name, לא נבחר"
 }
 
 /**
@@ -30,8 +60,18 @@ object Ui {
 class RowAdapter(
     ctx: Context,
     private val rows: List<CharSequence>,
-    var sizeSp: Float = 20f
+    var sizeSp: Float = 20f,
+    /** Spoken form of row N, when it differs from the row's own text. */
+    private val describe: ((Int) -> String)? = null,
+    /** False for rows that are labels rather than choices. */
+    private val enabled: ((Int) -> Boolean)? = null
 ) : ArrayAdapter<CharSequence>(ctx, 0, rows) {
+
+    // ListView uses these to decide what the D-pad may land on. Without them a
+    // group heading is a stop on the way down, and this phone has no touchscreen
+    // to skip past it with — every heading would cost the reader a keypress.
+    override fun areAllItemsEnabled() = enabled == null
+    override fun isEnabled(position: Int) = enabled?.invoke(position) ?: true
 
     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
         val tv = (convertView as? TextView) ?: TextView(context).apply {
@@ -43,6 +83,9 @@ class RowAdapter(
         }
         tv.textSize = sizeSp
         tv.text = rows[position]
+        // Views are recycled, so this must be assigned on every pass — leaving the
+        // previous row's description behind is worse than having none.
+        tv.contentDescription = describe?.invoke(position)
         return tv
     }
 }
@@ -79,7 +122,8 @@ class ReaderAdapter(
         cache.get(position)?.let { return it }
         val body = Ui.html(lines[position])
         val out: CharSequence =
-            if (commented.contains(position + 1)) SpannableStringBuilder("◆  ").append(body)
+            if (commented.contains(position + 1))
+                SpannableStringBuilder("${Ui.HAS_MEFORSHIM}  ").append(body)
             else body
         cache.put(position, out)
         return out
@@ -95,6 +139,10 @@ class ReaderAdapter(
         }
         tv.textSize = sizeSp
         tv.text = row(position)
+        // The ◆ is the one thing this screen exists to tell you and the one thing
+        // a screen reader cannot get from the glyph.
+        tv.contentDescription =
+            Ui.describeRow(Ui.html(lines[position]), commented.contains(position + 1))
         return tv
     }
 }
