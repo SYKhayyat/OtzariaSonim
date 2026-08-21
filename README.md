@@ -14,6 +14,11 @@ running on a **Sonim XP5800, Android 7.1.2**.
 |---|---|---|---|
 | ![library](docs/01-library.png) | ![reader](docs/02-reader.png) | ![meforshim](docs/03-meforshim.png) | ![picker](docs/04-picker.png) |
 
+**Start here:** [`docs/ONBOARDING.md`](docs/ONBOARDING.md) — clone to a working reader on a
+handset, then the data model and the code. **Stuck?**
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — symptom-first, and it leads with the
+three checks that resolve most library problems.
+
 **More docs:** `SPEC.md` (verified data format and rules) · `BUILDER.md` (build/packing
 notes) · `CHANGELOG.md` (delivered features and backlog).
 
