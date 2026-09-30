@@ -1,0 +1,6 @@
+number,title,url,D,R,why,risk
+1,[Medium/bug] TOC parses whole book on main thread ANR,https://github.com/SYKhayyat/OtzariaSonim/issues/1,2,3,Move headings parse off-thread; ANR is loud no silent corruption,Loud ANR
+2,[Medium/bug] Line caches race bg loader vs UI,https://github.com/SYKhayyat/OtzariaSonim/issues/2,2,4,LinkedHashMap raced bg/main; wrong line shown silently,Silent wrong line
+3,[Low/perf] Every reader row parses HTML twice,https://github.com/SYKhayyat/OtzariaSonim/issues/3,1,2,Compute row HTML once; wasted CPU only,CPU waste
+4,[Low/bug] Meforshim resolution on main thread,https://github.com/SYKhayyat/OtzariaSonim/issues/4,2,3,Move sidecar resolution bg; jank is visible,Visible jank
+5,[Low/perf] Library listing on main thread,https://github.com/SYKhayyat/OtzariaSonim/issues/5,2,3,Off-thread listFiles+sort; 6618-book jank is visible,Visible jank
