@@ -87,8 +87,8 @@ biggest seforim). Two ways to jump:
   in the header; **Center (OK)** jumps, **Back** cancels. `0` = start, `100` = end.
 - **`*` key — chapter TOC.** Opens the book's headings (perek / siman …) as an indented,
   jump-able list; **Center (OK)** scrolls the reader there. Inside the TOC you can also
-  **type a number** to jump to the **Nth perek/siman** (`#`/`*` clears it). Books over
-  ~1,500 lines open on the TOC first.
+  **type a number** to jump to the **Nth perek/siman** (`#`/`*` clears it). A book always
+  opens on itself — at your saved place, or at the top — never on the TOC.
 - **Resume** — each sefer reopens **where you left off**.
 
 Nothing on disk is split — the `.txt` files stay byte-identical, so the meforshim link

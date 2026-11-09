@@ -31,7 +31,6 @@ class ReaderActivity : Activity() {
 
     private val REQ_COMMENTATORS = 10
     private val REQ_TOC = 11
-    private val BIG_BOOK_LINES = 1500   // above this, open on the chapter TOC first
 
     private lateinit var list: ListView
     private lateinit var header: TextView
@@ -119,16 +118,18 @@ class ReaderActivity : Activity() {
                 list.adapter = adapter
                 list.requestFocus()
 
-                // Reopen where we left off; otherwise big books open on the chapter
-                // picker. The saved place is checked against the text that was
-                // there, because the library is re-downloadable and a bare line
-                // index does not survive a sefer gaining a line upstream.
+                // Reopen where we left off; otherwise sit at the top. Opening a sefer
+                // used to jump straight into the chapter TOC once it passed 1,500
+                // lines (בראשית is 1,584, so it did this to the most ordinary sefer
+                // there is) — a reader who asked for a book was handed a table of
+                // contents, and on a phone-sized screen that reads as the app
+                // ignoring the keypress. `*` is right there for the TOC.
+                //
+                // The saved place is checked against the text that was there, because
+                // the library is re-downloadable and a bare line index does not
+                // survive a sefer gaining a line upstream.
                 val saved = Settings.resume(this, bookTitle, lines)
-                when {
-                    saved == null || saved.lost ->
-                        if (lines.size > BIG_BOOK_LINES && headings.isNotEmpty()) openToc()
-                    else -> list.setSelection(saved.pos)
-                }
+                if (saved != null && !saved.lost) list.setSelection(saved.pos)
                 if (saved?.lost == true) {
                     // Said out loud. A reader who is silently 300 lines from where
                     // they stopped concludes the app loses their place at random.

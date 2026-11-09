@@ -24,6 +24,10 @@ today, see `README.md` and `SPEC.md`.
   work comments on / other cross-references. Persisted per book together with the
   roster it was chosen against, so a later re-pack that adds a commentator shows it
   checked rather than silently off.
+- Opening a sefer no longer jumps into the chapter TOC. The reader opened the TOC first for
+  any book over 1,500 lines that had no saved place — בראשית is 1,584, so the most ordinary
+  sefer there is did it — and a keypress that asked for a book returning a table of contents
+  reads as the app ignoring you. `*` still opens the TOC, and nothing else changed.
 - **הערות — a stack of references.** D-pad Right pushes the highlighted segment, or the
   highlighted line inside the meforshim panel (which pushes that commentary's own line in its
   own sefer). D-pad Left removes it — the one copy under the highlight inside הערות, every
