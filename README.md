@@ -74,8 +74,11 @@ Everything is the **D-pad + center (OK) + Back**, plus a couple of number/volume
   the commentators you have chosen (see below).
 - **Center (OK)** on a ◆ line — opens all chosen meforshim on that segment, **stacked in
   one scroll** (each under its reference). Up/Down scrolls; **Back** returns.
+- **D-pad Right** — push the highlighted segment onto **הערות** (see below). **D-pad Left**
+  sweeps it off again.
 - **Volume Up / Down** — larger / smaller font (remembered).
-- The header shows a **breadcrumb**: `book · chapter · line/total · %`.
+- The header shows a **breadcrumb** (`book · chapter`), `line/total · %`, the note hint,
+  and `MENU הערות (N)` with however many references are on the list.
 
 ### Navigating a large sefer
 Rows render lazily and the file is read in the background (the header shows `טוען…` on the
@@ -92,13 +95,40 @@ Nothing on disk is split — the `.txt` files stay byte-identical, so the mefors
 graph (keyed by filename + line number) is unaffected. The "split" is purely in how the
 reader *presents* the book.
 
+### הערות — the reference stack
+A second reading position, for the pasuk or the mefaresh you want to come back to while you
+keep reading somewhere else.
+
+- **D-pad Right** pushes the highlighted **segment** — or the highlighted **line inside the
+  meforshim panel**, which pushes *that commentary's own line in its own sefer*. Pushing the
+  same thing twice is **two entries**: this is a stack, not a set.
+- **D-pad Left** removes: inside **הערות** it drops the **one** copy under the highlight; in
+  the reader or the meforshim panel it drops **every** copy of that reference. Pressing it on
+  something that is not on the list says `לא בהערות` and changes nothing.
+- **MENU** opens **הערות** from the reader or from the meforshim panel, and closes it again
+  from inside. (`#` stays the commentator picker.) **Back** also returns.
+- Inside **הערות**: **Up/Down** moves, **Center (OK)** opens the meforshim on that reference
+  exactly as it would from the reader, **`*`** cycles the order — **חדש למעלה** (newest
+  first), **ישן למעלה**, or **לפי ספר** (grouped by sefer, with a `— sefer · N —` heading
+  per group, which the D-pad skips).
+- The header of **הערות** says `הערות · N · <order>` and, under it, **where the highlighted
+  item is from** (`מ: בראשית · פרק א`, or a mefaresh's own reference such as `רש"י על
+  בראשית א,ה`).
+
+**An entry is a pointer, not a copy.** What is stored is the book's path under the library
+root, the line number, the "where from" label and an insertion counter — no text at all. The
+preview under each row is read out of the sefer when the list is drawn (in the background, so
+the screen is instant), which means the list always shows what the sefer says *now*: re-pack
+or re-download the library and the references still resolve to the same words. The list lives
+in the app's preferences and survives closing the app.
+
 ### Choosing which meforshim appear
 This is a **per-book filter**, like Otzaria's commentator list.
 
-1. While reading, press the **`#` key** (the header shows `# = מפרשים`). *(MENU also works.
-   The left soft-key is handled in code, but the XP5800 has no such key — its keylayout maps
-   neither `SOFT_LEFT` nor `SOFT_RIGHT` — so on that unit `#` and MENU are the only two that
-   act.)*
+1. While reading, press the **`#` key** (the header shows `# = מפרשים`). *(The left
+   soft-key is handled in code, but the XP5800 has no such key — its keylayout maps neither
+   `SOFT_LEFT` nor `SOFT_RIGHT` — so `#` is the one that acts. MENU used to open this too; it
+   now opens **הערות**, and `#` is the picker's key.)*
 2. You get the **בחר מפרשים** ("choose commentators") checklist, in up to three groups:
    - **מפרשים** — the commentaries on this sefer. **On** by default.
    - **הספר שעליו זה מפרש** — if you are reading a commentary, the sefer it comments on. **On**
@@ -250,7 +280,13 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
 - `CommentatorsActivity` — the per-book ☑/☐ filter, grouped into commentaries / the sefer this one
   comments on / other cross-references, from the sidecar's per-commentator kind byte. Persisted
   per book title together with the roster it was made against.
-- `CommentaryActivity` — the chosen meforshim on one segment, stacked.
+- `CommentaryActivity` — the chosen meforshim on one segment, stacked; each line is a
+  selectable reference, so D-pad Right can push that commentary's own line onto הערות.
+- `Notes.kt` / `NotesActivity` — **הערות**, the reference stack: an entry is a path + line +
+  a "where from" label and nothing else, saved as one preference string. `Notes` holds the
+  pure core (encode/decode, push/drop, the three orders and the grouping) and is
+  unit-tested; the screen reads each line out of the library in the background to draw its
+  preview.
 - `HelpActivity` — the on-device controls cheat-sheet (English/LTR), reached with `#` from the
   library.
 - `Ui.kt` — `RowAdapter` (the shared RTL, adjustable-size list adapter) + the minimal

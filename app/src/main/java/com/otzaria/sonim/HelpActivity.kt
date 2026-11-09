@@ -29,8 +29,16 @@ class HelpActivity : Activity() {
         "<h2>Reading</h2>Up / Down — move through the segments.<br>" +
             "A <b>&#9670;</b> at the start of a line = meforshim are available on that segment.<br>" +
             "<b>OK</b> (center) on a &#9670; line — opens all your chosen meforshim, stacked.",
-        "<h2>Choosing which meforshim appear</h2><b>#</b> (or MENU) — the per-book commentator " +
+        "<h2>Choosing which meforshim appear</h2><b>#</b> — the per-book commentator " +
             "list, each with a checkbox.<br>OK toggles, Back saves. Saved separately per book.",
+        "<h2>הערות &#8212; the reference stack</h2>" +
+            "<b>D-pad Right</b> on a segment pushes a REFERENCE to it (a sefer + line, never a " +
+            "copy of the text). It works on a line inside meforshim too &#8212; that pushes the " +
+            "commentary's own line. Pushing the same thing again adds a second entry.<br>" +
+            "<b>D-pad Left</b> removes it: one copy inside <b>הערות</b>, every copy everywhere " +
+            "else.<br><b>MENU</b> opens <b>הערות</b> from the reader or the meforshim screen, " +
+            "and closes it again from there. Up/Down moves, <b>OK</b> opens the meforshim on " +
+            "that reference, <b>*</b> cycles the order (newest / oldest / grouped by sefer).",
         "<h2>Getting around a big sefer</h2><b>Type a number</b> (0&#8211;100) to enter a percent " +
             "of the book — it shows live in the header. <b>OK</b> jumps there, <b>Back</b> cancels " +
             "(stays put). 0 = the very start, 100 = the end.<br>" +

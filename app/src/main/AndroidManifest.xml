@@ -24,6 +24,7 @@
         <activity android:name=".CommentaryActivity" android:exported="false" />
         <activity android:name=".CommentatorsActivity" android:exported="false" />
         <activity android:name=".TocActivity" android:exported="false" />
+        <activity android:name=".NotesActivity" android:exported="false" />
         <activity android:name=".HelpActivity" android:exported="false" />
     </application>
 </manifest>

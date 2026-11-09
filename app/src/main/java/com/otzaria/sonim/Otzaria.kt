@@ -107,6 +107,36 @@ object Otzaria {
     }
 
     /**
+     * A path in the form a note stores it: relative to [root] when it is under it.
+     *
+     * A saved note is a pointer into a library the phone can move, re-pack or
+     * re-download, so what it must not contain is this machine's absolute path. The
+     * sidecar already stores targets this way; this makes the reader agree with it.
+     */
+    fun relativize(path: String): String {
+        val p = path.replace('\\', '/')
+        val r = root.replace('\\', '/').trimEnd('/')
+        return if (r.isNotEmpty() && p.startsWith("$r/")) p.substring(r.length + 1) else p
+    }
+
+    /**
+     * One 1-based line of a book, by the path form [relativize] produces.
+     *
+     * This is what makes a note a reference rather than a copy: the list draws the
+     * opening of the line by reading the sefer, so it shows what the sefer says NOW.
+     * A book already in the line cache costs nothing; a monster sefer is streamed and
+     * stops at the wanted line.
+     */
+    fun lineAt(path: String, line: Int): String? {
+        if (line < 1) return null
+        val abs = if (path.startsWith("/")) path else File(root, path).absolutePath
+        val f = File(abs)
+        if (!f.isFile) return null
+        return if (f.length() <= BIG_FILE_BYTES) linesOf(abs).getOrNull(line - 1)
+        else collectLines(abs, setOf(line))[line]
+    }
+
+    /**
      * A UTF-8 byte-order mark, which Kotlin's `readLines` hands back as the first
      * character of the first line. Roughly 150 of the library's 6,618 books start
      * with one, and every regex here is anchored at `^` — so `<h1>` on line 1 is
@@ -403,8 +433,21 @@ object Otzaria {
     fun commentedLines(bookTitle: String, selected: Set<String>?): Set<Int> =
         indexFor(bookTitle)?.markedLines(effectiveSelection(bookTitle, selected)) ?: emptySet()
 
-    /** Resolved meforshim on a given 1-based source line: ref + rendered content text. */
-    data class Meforish(val ref: String, val content: String, val commentator: String, val kind: Int)
+    /**
+     * Resolved meforshim on a given 1-based source line: ref + rendered content text.
+     *
+     * [path] and [line] are where that mefaresh's own text is, in the same form a note
+     * stores — so a line seen inside the meforshim panel can be pushed onto the stack
+     * as a pointer, without copying its text or re-resolving the link graph.
+     */
+    data class Meforish(
+        val ref: String,
+        val content: String,
+        val commentator: String,
+        val kind: Int,
+        val path: String,
+        val line: Int
+    )
 
     /**
      * Meforshim on [sourceLine], keeping only [selected] commentators (null = the
@@ -436,7 +479,7 @@ object Otzaria {
         val result = ArrayList<Meforish>(relevant.size)
         for (l in relevant) {
             val text = content["${l.relPath}#${l.targetLine}"] ?: continue
-            result.add(Meforish(l.ref, text, l.commentator, l.kind))
+            result.add(Meforish(l.ref, text, l.commentator, l.kind, l.relPath, l.targetLine))
         }
         result.sortBy { it.kind }        // stable: מפרשים, then מקור, then קשור
         return result

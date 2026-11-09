@@ -1,6 +1,7 @@
 package com.otzaria.sonim
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.text.SpannableStringBuilder
@@ -11,16 +12,25 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
+import android.widget.Toast
 
 /**
- * Show every meforish attached to one segment: reference (bold) + resolved text.
+ * Show every meforsih attached to one segment: reference (bold) + resolved text.
  * D-pad up/down scrolls; volume up/down changes font size; back returns to the reader.
+ *
+ * Each mefaresh line is also a place you can push onto הערות (D-pad Right): the
+ * reference pushed is that mefaresh's OWN line in its own sefer, so opening it later
+ * shows the meforshim on the commentary — no text is copied, and the link the reader
+ * finds is where the words actually live.
  */
 class CommentaryActivity : Activity() {
 
     private lateinit var list: ListView
     private lateinit var header: TextView
     private var adapter: RowAdapter? = null
+
+    /** Row N is either a section label (null) or the mefaresh it shows. */
+    private val items = ArrayList<Otzaria.Meforish?>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,7 +60,10 @@ class CommentaryActivity : Activity() {
         setContentView(rootView)
 
         val mefs = Otzaria.meforshimFor(book, line, Settings.activeSelection(this, book))
-        header.text = if (mefs.isEmpty()) "אין מפרשים" else "מפרשים ($book)"
+        header.text = when {
+            mefs.isEmpty() -> "אין מפרשים"
+            else -> "מפרשים ($book)\nימין = הערה · MENU הערות"
+        }
 
         // [Otzaria.meforshimFor] returns מפרשים, then the base text, then
         // cross-references. A heading goes in wherever that changes — without one,
@@ -61,7 +74,10 @@ class CommentaryActivity : Activity() {
         for (m in mefs) {
             if (m.kind != lastKind) {
                 lastKind = m.kind
-                sectionTitle(m.kind)?.let { rows.add(Ui.html("<b>— $it —</b>")) }
+                sectionTitle(m.kind)?.let {
+                    rows.add(Ui.html("<b>— $it —</b>"))
+                    items.add(null)
+                }
             }
             rows.add(
                 SpannableStringBuilder()
@@ -69,10 +85,18 @@ class CommentaryActivity : Activity() {
                     .append("\n")
                     .append(Ui.html(m.content))
             )
+            items.add(m)
         }
-        adapter = RowAdapter(this, rows, Settings.fontSize(this))
+        adapter = RowAdapter(
+            this, rows, Settings.fontSize(this),
+            // Section labels are not choices: without this the D-pad stops on them and
+            // this phone has no touchscreen to skip past with (BUILDER.md S3).
+            enabled = { i -> items.getOrNull(i) != null }
+        )
         list.adapter = adapter
         list.requestFocus()
+        val first = items.indexOfFirst { it != null }
+        if (first >= 0) list.setSelection(first)
     }
 
     /** null for מפרשים — the header already says that, and the common case is a
@@ -83,8 +107,37 @@ class CommentaryActivity : Activity() {
         else -> null
     }
 
+    private fun selected(): Otzaria.Meforish? =
+        items.getOrNull(list.selectedItemPosition)
+
+    /** Push this mefaresh's own line onto הערות, as a pointer into its own sefer. */
+    private fun pushNote() {
+        val m = selected() ?: return
+        val after = Notes.add(Notes.load(this), m.path, m.line, m.ref)
+        Notes.save(this, after)
+        Toast.makeText(this, "נוסף להערות (${after.size})", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Left here removes every copy — the list itself is where a single copy is dropped. */
+    private fun removeNote() {
+        val m = selected() ?: return
+        val before = Notes.load(this)
+        if (Notes.countOf(before, m.path, m.line) == 0) {
+            Toast.makeText(this, "לא בהערות", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val after = Notes.removeAll(before, m.path, m.line)
+        Notes.save(this, after)
+        Toast.makeText(this, "הוסר מהערות (${after.size})", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { pushNote(); return true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { removeNote(); return true }
+            KeyEvent.KEYCODE_MENU -> {
+                startActivity(Intent(this, NotesActivity::class.java)); return true
+            }
             KeyEvent.KEYCODE_VOLUME_UP -> { bumpFont(+2f); return true }
             KeyEvent.KEYCODE_VOLUME_DOWN -> { bumpFont(-2f); return true }
         }

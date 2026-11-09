@@ -25,6 +25,7 @@ import android.widget.Toast
  *    OK jumps, Back cancels (and stays put, without leaving the book),
  *  - the last-read position is remembered per book.
  * ◆ marks segments with meforshim; center opens them; # picks commentators; volume ± = font.
+ * D-pad Right pushes the segment onto הערות, D-pad Left sweeps it off, MENU opens the list.
  */
 class ReaderActivity : Activity() {
 
@@ -40,6 +41,7 @@ class ReaderActivity : Activity() {
     private var headings: List<Otzaria.Heading> = emptyList()
     private var commented: Set<Int> = emptySet()
     private var adapter: ReaderAdapter? = null
+    private var noteCount = 0
 
     // Percent-jump entry: while a number is being typed, pctEntry is true and pctValue holds
     // the running 0..100 value. OK commits, Back cancels (see onBackPressed).
@@ -94,6 +96,7 @@ class ReaderActivity : Activity() {
         })
 
         load()
+        noteCount = Notes.load(this).size
     }
 
     /**
@@ -156,7 +159,10 @@ class ReaderActivity : Activity() {
         val pct = ((first + 1) * 100) / n
         val chapter = chapterAt(first)
         val place = if (chapter.isNotEmpty()) "$bookTitle · $chapter" else bookTitle
-        header.text = "$place\n${first + 1}/$n · $pct%   # מפרשים · * תוכן · מספר→אחוז"
+        // The count is on the hint rather than in a bar of its own: it is the one
+        // thing that tells a reader the push landed without opening הערות.
+        val notes = if (noteCount > 0) "MENU הערות ($noteCount)" else "MENU הערות"
+        header.text = "$place\n${first + 1}/$n · $pct%   ימין = הערה\n# מפרשים · * תוכן · $notes"
     }
 
     /** Text of the nearest heading at or above list position [pos] (empty if none yet). */
@@ -200,6 +206,61 @@ class ReaderActivity : Activity() {
         updateHeader(list.firstVisiblePosition)
     }
 
+    /**
+     * The row the D-pad is on. The reader is a non-touch device, so this is the
+     * highlight; [ListView.firstVisiblePosition] is only the fallback for the moment
+     * during load when nothing has been selected yet.
+     */
+    private fun highlighted(): Int {
+        val sel = list.selectedItemPosition
+        return if (sel >= 0) sel else list.firstVisiblePosition
+    }
+
+    /** The path a note stores: relative to the library root, so the phone can move house. */
+    private fun whereFrom(pos: Int): String {
+        val chapter = chapterAt(pos)
+        return if (chapter.isNotEmpty()) "$bookTitle · $chapter" else bookTitle
+    }
+
+    /** Push the highlighted segment onto הערות. Duplicates are kept — that is the point. */
+    private fun pushNote() {
+        val pos = highlighted()
+        if (lines.getOrNull(pos) == null) return
+        val after = Notes.add(Notes.load(this), Otzaria.relativize(path), pos + 1, whereFrom(pos))
+        Notes.save(this, after)
+        noteCount = after.size
+        updateHeader(list.firstVisiblePosition)
+        Toast.makeText(this, "נוסף להערות (${after.size})", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Drop EVERY copy of the highlighted segment — Left outside the list is a clean sweep. */
+    private fun removeNote() {
+        val pos = highlighted()
+        if (lines.getOrNull(pos) == null) return
+        val rel = Otzaria.relativize(path)
+        val before = Notes.load(this)
+        if (Notes.countOf(before, rel, pos + 1) == 0) {
+            Toast.makeText(this, "לא בהערות", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val after = Notes.removeAll(before, rel, pos + 1)
+        Notes.save(this, after)
+        noteCount = after.size
+        updateHeader(list.firstVisiblePosition)
+        Toast.makeText(this, "הוסר מהערות (${after.size})", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun openNotes() {
+        startActivity(Intent(this, NotesActivity::class.java))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // הערות can be changed from the meforshim screen or from the list itself.
+        noteCount = Notes.load(this).size
+        if (lines.isNotEmpty()) updateHeader(list.firstVisiblePosition)
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
@@ -232,8 +293,13 @@ class ReaderActivity : Activity() {
         // Any other actionable key interrupts a pending percent (Back is handled separately).
         if (pctEntry) cancelPct()
         when (keyCode) {
-            // Reachable whatever the Sonim exposes: MENU, left soft-key, and #.
-            KeyEvent.KEYCODE_MENU,
+            // D-pad Right pushes the segment under the highlight, with no menu in the way.
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { pushNote(); return true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { removeNote(); return true }
+            // MENU opens הערות — the same key that WAS a second route to the meforshim
+            // picker. `#` and the left soft-key still do that.
+            KeyEvent.KEYCODE_MENU -> { openNotes(); return true }
+            // Reachable whatever the Sonim exposes: left soft-key and #.
             KeyEvent.KEYCODE_SOFT_LEFT,
             KeyEvent.KEYCODE_POUND -> {
                 startActivityForResult(

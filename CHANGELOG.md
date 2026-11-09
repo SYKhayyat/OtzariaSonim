@@ -24,6 +24,18 @@ today, see `README.md` and `SPEC.md`.
   work comments on / other cross-references. Persisted per book together with the
   roster it was chosen against, so a later re-pack that adds a commentator shows it
   checked rather than silently off.
+- **הערות — a stack of references.** D-pad Right pushes the highlighted segment, or the
+  highlighted line inside the meforshim panel (which pushes that commentary's own line in its
+  own sefer). D-pad Left removes it — the one copy under the highlight inside הערות, every
+  copy of that reference outside it. MENU opens the list, replacing the second route to the
+  commentator picker that existed only because MENU and `#` both opened it; `#` remains the
+  picker. Center (OK) opens the meforshim on the reference, `*` cycles the order (newest /
+  oldest / grouped by sefer, with per-sefer headings the D-pad skips), and the header says
+  `הערות · N · <order>` plus where the highlighted item is from.
+  An entry stores a path, a line number, a "where from" label and an insertion counter —
+  **no text**. The preview under each row is read out of the sefer in the background when the
+  list is drawn, so the list cannot drift from the book it points into, and a re-packed
+  library is reflected immediately. The list persists in preferences.
 - BOM-tolerant heading parsing.
 - Adjustable font size (Volume ±), persisted.
 - Spoken/accessible names for the ◆ / ☑ / 📁 glyphs.
