@@ -5,6 +5,14 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **The chapter TOC no longer freezes the app on a big sefer.** Opening the TOC parsed the
+  whole book — every line, to find its `<h1..6>` headings — on the main thread: 31 MB and
+  26,776 lines for ערוך השולחן, which is seconds of frozen screen and an ANR the system
+  offers to "close". The parse now happens in the background, the header says `טוען…` until
+  the chapters land, and the TOC's own arithmetic (the indent per heading depth, the primary
+  level a chapter number counts in) moved into `Toc.kt`, so it is unit-tested without a
+  device — including a test that the book is read off the calling thread, which is the
+  ANR itself.
 - **From הערות you can now get back to the sefer, and the list has a menu.** The stack held
   pointers into seforim and there was no key that opened one: `OK` opened the meforshim on the
   reference, `*` cycled the order, and that was all. Now `*` opens **the sefer that reference

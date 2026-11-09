@@ -35,21 +35,14 @@ class TocActivity : OtzActivity() {
     /** The number typed ahead of the jump — Nth chapter, or a count for Up/Down. */
     private val typed = TypeIn(cap = 999999)
 
+    /** True while the book is still being read; the header says so until it lands. */
+    private var loading = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Otzaria.loadRoot(this)
 
         val path = intent.getStringExtra("path") ?: run { finish(); return }
-        headings = Otzaria.headings(path)
-        if (headings.isEmpty()) {
-            Toast.makeText(this, "אין חלוקה לפרקים", Toast.LENGTH_SHORT).show()
-            finish(); return
-        }
-
-        val minLevel = headings.minOf { it.level }
-        val levelCounts = headings.groupingBy { it.level }.eachCount()
-        val primaryLevel = levelCounts.maxByOrNull { it.value }!!.key
-        primaryRowByOrdinal = headings.indices.filter { headings[it].level == primaryLevel }
 
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         header = TextView(this).apply {
@@ -70,19 +63,46 @@ class TocActivity : OtzActivity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
         setContentView(rootView)
-        showHint()
 
-        val rows: List<CharSequence> = headings.map { h ->
-            " ".repeat(h.level - minLevel) + h.text   // em-space indent per heading depth
-        }
-        list.adapter = RowAdapter(this, rows, Settings.fontSize(this))
-        list.setOnItemClickListener { _, _, pos, _ -> jumpTo(headings[pos].pos) }
         // The ListView eats Up/Down (it scrolls on them), so the typed count is taken
         // here; without this, typing 20 and pressing Down would move one row.
         list.setOnKeyListener { _, keyCode, event ->
             event.action == KeyEvent.ACTION_DOWN && handleTypedKey(keyCode)
         }
-        list.requestFocus()
+
+        load(path)
+    }
+
+    /**
+     * Read the book's headings and build the TOC — off the main thread.
+     *
+     * [Otzaria.headings] parses every line of the sefer: 31 MB and 26,776 lines for
+     * ערוך השולחן, which is seconds of work. On the main thread that is an ANR
+     * waiting to happen — the screen freezes and the system offers to close the app
+     * — and the reader, which already learned this and loads its book in the
+     * background, would have been the model to copy.
+     *
+     * The list stays empty and the header says "טוען…" until the work lands.
+     */
+    private fun load(path: String) {
+        header.text = "תוכן — טוען…"
+        Toc.Loader(
+            read = { Toc.model(Otzaria.headings(it)) },
+            post = { action -> runOnUiThread { action() } }
+        ).load(path) { model ->
+            if (isFinishing) return@load
+            if (model.headings.isEmpty()) {
+                Toast.makeText(this, "אין חלוקה לפרקים", Toast.LENGTH_SHORT).show()
+                finish(); return@load
+            }
+            headings = model.headings
+            primaryRowByOrdinal = model.primaryRowByOrdinal
+            list.adapter = RowAdapter(this, model.rows, Settings.fontSize(this))
+            list.setOnItemClickListener { _, _, pos, _ -> jumpTo(headings[pos].pos) }
+            list.requestFocus()
+            loading = false
+            showHint()
+        }
     }
 
     /**
@@ -112,6 +132,9 @@ class TocActivity : OtzActivity() {
     }
 
     private fun showHint() {
+        // While the book is being read there is nothing to hint about yet, and the
+        // header saying "טוען…" is the honest thing to say.
+        if (loading) return
         val n = typed.value
         header.text = if (typed.isEmpty) "תוכן — הקש מספר לקפיצה"
         else "$n · אישור = פרק $n\nמעלה/מטה = $n שורות · שמאל = מחיקה · # = ניקוי"

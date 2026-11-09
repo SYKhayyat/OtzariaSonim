@@ -110,7 +110,9 @@ biggest seforim). Four ways to move:
   jump-able list; **Center (OK)** scrolls the reader there. Inside the TOC you can also
   **type a number** to jump to the **Nth perek/siman**; Up/Down then walk that many headings,
   **D-pad Left** erases a digit and **`#`** clears the whole number. A book always opens on
-  itself — at your saved place, or at the top — never on the TOC.
+  itself — at your saved place, or at the top — never on the TOC. The TOC takes a moment to
+  appear on a big sefer (the header says `טוען…`): its headings are parsed in the background,
+  because parsing them means reading every line of the book.
 - **Resume** — each sefer reopens **where you left off**.
 
 Nothing on disk is split — the `.txt` files stay byte-identical, so the meforshim link
@@ -309,7 +311,10 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
   of MB and reading them in `onCreate` would ANR.
 - `TocActivity` — the chapter TOC from `Otzaria.headings()`; auto-picks the primary heading level
   (perek / siman) for the type-a-number jump, and reads the same typed number as a count for
-  Up/Down and as one digit at a time for D-pad Left.
+  Up/Down and as one digit at a time for D-pad Left. The book's headings are parsed off the main
+  thread (the header says `טוען…` until they land), because the parse reads every line of the
+  sefer and some seforim are tens of MB — on the main thread that is an ANR. The TOC's own
+  arithmetic is in `Toc.kt`, so it is unit-tested without a device.
 - `OtzActivity` — the base every screen extends, so **MENU is one key**: a tap opens הערות from
   anywhere, a hold runs that screen's own MENU action. `MenuKey.kt` decides which, on key-up, by
   how long the key was held; `MenuContractTest` fails the build if a screen stops inheriting it.
