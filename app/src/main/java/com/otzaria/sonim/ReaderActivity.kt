@@ -1,6 +1,5 @@
 package com.otzaria.sonim
 
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -21,13 +20,16 @@ import android.widget.Toast
  * Navigation for big seforim without ever splitting the file on disk:
  *  - lazy rendering (see [ReaderAdapter]) so even a 34 MB book opens instantly,
  *  - `*` opens the chapter TOC ([TocActivity]),
- *  - typing a number (0..100) enters a percent to jump to — it shows live in the header,
- *    OK jumps, Back cancels (and stays put, without leaving the book),
+ *  - typing a number enters a percent to jump to (OK) **or** a count of segments to
+ *    walk (Up/Down) — the numeric argument Emacs calls Ctrl-U. It shows live in the
+ *    header, D-pad Left erases a mistyped digit, Back cancels and stays put,
  *  - the last-read position is remembered per book.
  * ◆ marks segments with meforshim; center opens them; # picks commentators; volume ± = font.
- * D-pad Right pushes the segment onto הערות, D-pad Left sweeps it off, MENU opens the list.
+ * D-pad Right pushes the segment onto הערות, D-pad Left sweeps it off.
+ * MENU is the stack's key everywhere ([OtzActivity]); holding it here is the
+ * commentator picker, which is where MENU pointed before the stack took the tap.
  */
-class ReaderActivity : Activity() {
+class ReaderActivity : OtzActivity() {
 
     private val REQ_COMMENTATORS = 10
     private val REQ_TOC = 11
@@ -42,10 +44,15 @@ class ReaderActivity : Activity() {
     private var adapter: ReaderAdapter? = null
     private var noteCount = 0
 
-    // Percent-jump entry: while a number is being typed, pctEntry is true and pctValue holds
-    // the running 0..100 value. OK commits, Back cancels (see onBackPressed).
-    private var pctEntry = false
-    private var pctValue = 0
+    /**
+     * The number typed ahead of an action: OK reads it as a percent of the book,
+     * Up/Down read it as a count of segments. One pending number with two meanings is
+     * deliberate — it is the same digits, and the header says both.
+     *
+     * Capped at 999 rather than 100 so a count can be a real distance; a percent over
+     * 100 still means the end of the sefer (see [Jump.percent]).
+     */
+    private val typed = TypeIn(cap = 999)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,7 +82,7 @@ class ReaderActivity : Activity() {
         setContentView(rootView)
 
         list.setOnItemClickListener { _, _, pos, _ ->
-            if (pctEntry) { commitPct(); return@setOnItemClickListener }
+            if (!typed.isEmpty) { commitPct(); return@setOnItemClickListener }
             val lineNo = pos + 1
             if (commented.contains(lineNo)) {
                 startActivity(
@@ -87,10 +94,17 @@ class ReaderActivity : Activity() {
                 Toast.makeText(this, "אין מפרשים נבחרים על קטע זה", Toast.LENGTH_SHORT).show()
             }
         }
+        // Up and Down never reach this Activity on their own: the ListView scrolls on
+        // them and consumes the event. So a count typed ahead of Down has to be taken
+        // at the list, or typing 20 and pressing Down would just scroll one row.
+        // Inert whenever nothing has been typed.
+        list.setOnKeyListener { _, keyCode, event ->
+            event.action == KeyEvent.ACTION_DOWN && handleTypedKey(keyCode)
+        }
         list.setOnScrollListener(object : AbsListView.OnScrollListener {
             override fun onScrollStateChanged(v: AbsListView?, s: Int) {}
             override fun onScroll(v: AbsListView?, first: Int, visible: Int, total: Int) {
-                if (!pctEntry) updateHeader(first)   // don't clobber the percent prompt
+                if (typed.isEmpty) updateHeader(first)   // don't clobber the number prompt
             }
         })
 
@@ -183,28 +197,64 @@ class ReaderActivity : Activity() {
         )
     }
 
-    /** Type a digit into the pending percent (0..100, clamped); shows live in the header. */
-    private fun appendPctDigit(d: Int) {
+    /** Type a digit into the pending number; it shows live in the header. */
+    private fun appendDigit(d: Int) {
         if (lines.isEmpty()) return
-        pctEntry = true
-        pctValue = (pctValue * 10 + d).coerceAtMost(100)
-        header.text = "קפיצה ל־$pctValue%\nאישור לקפיצה · חזרה לביטול"
+        typed.append(d)
+        showTyped()
     }
 
-    /** Jump to the typed percent: 0 => very start, 100 => end. */
+    /**
+     * The prompt says what the same number will do to OK and to Up/Down, and which
+     * key takes a digit back. A number that says one thing and silently does another
+     * is how a reader learns to distrust the keypad.
+     */
+    private fun showTyped() {
+        val n = typed.value
+        val pct = n.coerceAtMost(100)
+        header.text = "$n · אישור = קפיצה ל־$pct%\n" +
+            "מעלה/מטה = $n קטעים · שמאל = מחיקה · חזרה = ביטול"
+    }
+
+    /** Jump to the typed percent: 0 => very start, 100 (or more) => end. */
     private fun commitPct() {
-        val pct = pctValue
-        pctEntry = false; pctValue = 0
+        val pct = typed.value
+        typed.clear()
         if (lines.isEmpty()) return
-        val target = ((pct * (lines.size - 1)) / 100).coerceIn(0, lines.size - 1)
+        val target = Jump.percent(pct, lines.size)
         list.setSelection(target)
         updateHeader(target)
     }
 
-    /** Abandon the pending percent and stay exactly where we are. */
-    private fun cancelPct() {
-        pctEntry = false; pctValue = 0
+    /** Abandon the pending number and stay exactly where we are. */
+    private fun cancelTyped() {
+        typed.clear()
         updateHeader(list.firstVisiblePosition)
+    }
+
+    /**
+     * Erase the last digit typed. A typo is the whole reason this exists: meant 15,
+     * typed 12, so erase the 2 and carry on instead of starting over. Erasing the
+     * last digit ends the entry and puts the ordinary header back without moving.
+     */
+    private fun eraseDigit() {
+        if (!typed.backspace()) return
+        if (typed.isEmpty) updateHeader(list.firstVisiblePosition) else showTyped()
+    }
+
+    /**
+     * Walk [direction] (+1 down, -1 up) as many segments as have been typed — Ctrl-U
+     * with a count. Clamped to the sefer, and the move always spends the number: a
+     * typed 0 moves nothing *and* is used up, so the next press scrolls normally
+     * instead of leaving Up/Down dead until Back.
+     */
+    private fun countedMove(direction: Int) {
+        val count = typed.value
+        typed.clear()
+        if (lines.isEmpty() || count <= 0) { updateHeader(list.firstVisiblePosition); return }
+        val target = Jump.by(highlighted(), direction * count, lines.size)
+        list.setSelection(target)
+        updateHeader(target)
     }
 
     /**
@@ -251,15 +301,14 @@ class ReaderActivity : Activity() {
         Toast.makeText(this, "הוסר מהערות (${after.size})", Toast.LENGTH_SHORT).show()
     }
 
-    private fun openNotes() {
-        startActivity(Intent(this, NotesActivity::class.java))
-    }
-
     override fun onResume() {
         super.onResume()
         // הערות can be changed from the meforshim screen or from the list itself.
         noteCount = Notes.load(this).size
-        if (lines.isNotEmpty()) updateHeader(list.firstVisiblePosition)
+        if (lines.isEmpty()) return
+        // A number typed before the screen went away is still the reader's, so it
+        // keeps the header rather than being silently wiped by coming back.
+        if (typed.isEmpty) updateHeader(list.firstVisiblePosition) else showTyped()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -273,9 +322,9 @@ class ReaderActivity : Activity() {
         }
     }
 
-    /** Back cancels a pending percent (staying put); otherwise it leaves the book. */
+    /** Back cancels a pending number (staying put); otherwise it leaves the book. */
     override fun onBackPressed() {
-        if (pctEntry) { cancelPct(); return }
+        if (!typed.isEmpty) { cancelTyped(); return }
         super.onBackPressed()
     }
 
@@ -288,32 +337,61 @@ class ReaderActivity : Activity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
-            appendPctDigit(keyCode - KeyEvent.KEYCODE_0)
+            appendDigit(keyCode - KeyEvent.KEYCODE_0)
             return true
         }
-        // Any other actionable key interrupts a pending percent (Back is handled separately).
-        if (pctEntry) cancelPct()
+        if (handleTypedKey(keyCode)) return true
         when (keyCode) {
             // D-pad Right pushes the segment under the highlight, with no menu in the way.
             KeyEvent.KEYCODE_DPAD_RIGHT -> { pushNote(); return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> { removeNote(); return true }
-            // MENU opens הערות — the same key that WAS a second route to the meforshim
-            // picker. `#` and the left soft-key still do that.
-            KeyEvent.KEYCODE_MENU -> { openNotes(); return true }
             // Reachable whatever the Sonim exposes: left soft-key and #.
             KeyEvent.KEYCODE_SOFT_LEFT,
-            KeyEvent.KEYCODE_POUND -> {
-                startActivityForResult(
-                    Intent(this, CommentatorsActivity::class.java).putExtra("book", bookTitle),
-                    REQ_COMMENTATORS
-                )
-                return true
-            }
+            KeyEvent.KEYCODE_POUND -> { openCommentators(); return true }
             KeyEvent.KEYCODE_STAR -> { if (headings.isNotEmpty()) openToc(); return true }
             KeyEvent.KEYCODE_VOLUME_UP -> { bumpFont(+2f); return true }
             KeyEvent.KEYCODE_VOLUME_DOWN -> { bumpFont(-2f); return true }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    /**
+     * A press that belongs to the pending number, wherever it arrives from — the
+     * list's key listener (Up/Down, which the ListView would otherwise eat) or this
+     * Activity's own `onKeyDown` (digits, Left, Back).
+     *
+     * True means "already dealt with, do not forward". False on [TypedAction.PASS]
+     * after dropping the number, so the key goes on to do its ordinary job — `20` then
+     * `#` opens the picker, not a jump.
+     */
+    private fun handleTypedKey(keyCode: Int): Boolean {
+        if (typed.isEmpty) return false
+        when (TypedKeys.of(keyCode)) {
+            TypedAction.ERASE -> { eraseDigit(); return true }
+            TypedAction.UP -> { countedMove(-1); return true }
+            TypedAction.DOWN -> { countedMove(+1); return true }
+            // Back drops the number and stays in the sefer. Returned here and not
+            // forwarded: the framework reads the very same press as "leave the book".
+            TypedAction.CANCEL -> { cancelTyped(); return true }
+            TypedAction.DIGIT -> return false   // handled by the caller
+            // OK is the list's click — it reads the number itself (that is how a
+            // percent is committed), so it is forwarded untouched.
+            TypedAction.CONFIRM -> return false
+            TypedAction.PASS -> cancelTyped()   // then the key does its own job
+        }
+        return false
+    }
+
+    private fun openCommentators() {
+        startActivityForResult(
+            Intent(this, CommentatorsActivity::class.java).putExtra("book", bookTitle),
+            REQ_COMMENTATORS
+        )
+    }
+
+    /** Held MENU: the per-book commentator picker, which is where MENU used to point. */
+    override fun onMenuHold() {
+        openCommentators()
     }
 
     private fun bumpFont(delta: Float) {

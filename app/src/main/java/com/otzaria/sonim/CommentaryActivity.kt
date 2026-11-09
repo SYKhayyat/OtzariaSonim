@@ -1,7 +1,5 @@
 package com.otzaria.sonim
 
-import android.app.Activity
-import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.text.SpannableStringBuilder
@@ -16,14 +14,15 @@ import android.widget.Toast
 
 /**
  * Show every meforsih attached to one segment: reference (bold) + resolved text.
- * D-pad up/down scrolls; volume up/down changes font size; back returns to the reader.
+ * D-pad up/down scrolls; volume up/down changes font size; back returns to the reader;
+ * MENU is the stack's key here too, like everywhere else ([OtzActivity]).
  *
  * Each mefaresh line is also a place you can push onto הערות (D-pad Right): the
  * reference pushed is that mefaresh's OWN line in its own sefer, so opening it later
  * shows the meforshim on the commentary — no text is copied, and the link the reader
  * finds is where the words actually live.
  */
-class CommentaryActivity : Activity() {
+class CommentaryActivity : OtzActivity() {
 
     private lateinit var list: ListView
     private lateinit var header: TextView
@@ -135,9 +134,6 @@ class CommentaryActivity : Activity() {
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_RIGHT -> { pushNote(); return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> { removeNote(); return true }
-            KeyEvent.KEYCODE_MENU -> {
-                startActivity(Intent(this, NotesActivity::class.java)); return true
-            }
             KeyEvent.KEYCODE_VOLUME_UP -> { bumpFont(+2f); return true }
             KeyEvent.KEYCODE_VOLUME_DOWN -> { bumpFont(-2f); return true }
         }

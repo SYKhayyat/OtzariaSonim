@@ -1,6 +1,5 @@
 package com.otzaria.sonim
 
-import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -22,7 +21,7 @@ import android.widget.TextView
  * [Otzaria.KIND_MEFARESH] for why the graph is like that and where the answer
  * comes from.
  */
-class CommentatorsActivity : Activity() {
+class CommentatorsActivity : OtzActivity() {
 
     /** One line of the list: either a group heading or a togglable book. */
     private sealed class Row {

@@ -50,7 +50,7 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 & $adb shell pm grant com.otzaria.sonim android.permission.READ_EXTERNAL_STORAGE
 ```
 Then load a library (below), launch **אוצריא** from the phone's app menu, and — if it
-reports the folder is not found — press **MENU** on the library screen and set the path.
+reports the folder is not found — **hold MENU** on the library screen and set the path.
 
 ---
 
@@ -64,9 +64,18 @@ Everything is the **D-pad + center (OK) + Back**, plus a couple of number/volume
 - **Back** — go up one folder (at the top it exits the app).
 - The categories and folders mirror **exactly the Otzaria structure** — the app reflects
   whatever folder tree is on the phone (see *Loading the library*).
-- **MENU key** — change the library folder path.
+- **Hold MENU** — change the library folder path. (A *tap* on MENU opens **הערות**, like it
+  does on every other screen — see below.)
 - **`#` key** — an on-device **Help** cheat-sheet of all the controls (baked into the APK;
   English/LTR).
+
+### MENU is two keys
+**Tap** MENU anywhere — library, reader, meforshim panel, contents, picker, help — and you are
+in **הערות**. **Hold** it for about half a second and you get what MENU used to do on that
+screen instead: the library folder path, the per-book commentator picker in the reader, and
+closing the list from inside **הערות**. The tap/hold split is decided on key-up by how long
+the key was down (`MenuKey.kt`, unit-tested) and is inherited by every screen from
+`OtzActivity`, which is what keeps a new screen from losing it.
 
 ### Reading a book
 - **Up / Down** — move through segments (each pasuk / mishnah / passage is one line).
@@ -79,16 +88,29 @@ Everything is the **D-pad + center (OK) + Back**, plus a couple of number/volume
 - **Volume Up / Down** — larger / smaller font (remembered).
 - The header shows a **breadcrumb** (`book · chapter`), `line/total · %`, the note hint,
   and `MENU הערות (N)` with however many references are on the list.
+- **Type a number, then Up / Down** — moves that many segments at once, the numeric argument
+  Emacs puts on Ctrl-U (see *Navigating a large sefer*).
 
 ### Navigating a large sefer
 Rows render lazily and the file is read in the background (the header shows `טוען…` on the
-biggest seforim). Two ways to jump:
+biggest seforim). Four ways to move:
 - **Type a number `0`–`100`** — jump to that **percent** of the book. The digits show live
   in the header; **Center (OK)** jumps, **Back** cancels. `0` = start, `100` = end.
+- **Type a number, then Up / Down** — moves **that many segments** at once, the numeric
+  argument Emacs puts on Ctrl-U: `20` then Down lands twenty segments below the highlight
+  (clamped to the sefer, never wrapping). The same digits therefore have two readings while
+  they are pending, and the header says both: `20 · אישור = קפיצה ל־20%` /
+  `מעלה/מטה = 20 קטעים · שמאל = מחיקה · חזרה = ביטול`. Whichever action uses the number
+  spends it.
+- **D-pad Left erases the last digit** of a pending number, in the reader and in the TOC, so
+  a mistyped `12` meant to be `15` is fixed in place rather than retyped. **Back** cancels the
+  whole entry (and stays put). With nothing typed, D-pad Left is the usual *remove from
+  הערות* — entry mode is the only thing that re-points it.
 - **`*` key — chapter TOC.** Opens the book's headings (perek / siman …) as an indented,
   jump-able list; **Center (OK)** scrolls the reader there. Inside the TOC you can also
-  **type a number** to jump to the **Nth perek/siman** (`#`/`*` clears it). A book always
-  opens on itself — at your saved place, or at the top — never on the TOC.
+  **type a number** to jump to the **Nth perek/siman**; Up/Down then walk that many headings,
+  **D-pad Left** erases a digit and **`#`** clears the whole number. A book always opens on
+  itself — at your saved place, or at the top — never on the TOC.
 - **Resume** — each sefer reopens **where you left off**.
 
 Nothing on disk is split — the `.txt` files stay byte-identical, so the meforshim link
@@ -105,8 +127,9 @@ keep reading somewhere else.
 - **D-pad Left** removes: inside **הערות** it drops the **one** copy under the highlight; in
   the reader or the meforshim panel it drops **every** copy of that reference. Pressing it on
   something that is not on the list says `לא בהערות` and changes nothing.
-- **MENU** opens **הערות** from the reader or from the meforshim panel, and closes it again
-  from inside. (`#` stays the commentator picker.) **Back** also returns.
+- **Tap MENU** and you are in **הערות** — from every screen, not just the reader. Inside the
+  list, **hold MENU** closes it (a tap there only says you are already looking at it), and
+  **Back** returns as always. (`#` stays the commentator picker.)
 - Inside **הערות**: **Up/Down** moves, **Center (OK)** opens the meforshim on that reference
   exactly as it would from the reader, **`*`** cycles the order — **חדש למעלה** (newest
   first), **ישן למעלה**, or **לפי ספר** (grouped by sefer, with a `— sefer · N —` heading
@@ -127,8 +150,9 @@ This is a **per-book filter**, like Otzaria's commentator list.
 
 1. While reading, press the **`#` key** (the header shows `# = מפרשים`). *(The left
    soft-key is handled in code, but the XP5800 has no such key — its keylayout maps neither
-   `SOFT_LEFT` nor `SOFT_RIGHT` — so `#` is the one that acts. MENU used to open this too; it
-   now opens **הערות**, and `#` is the picker's key.)*
+   `SOFT_LEFT` nor `SOFT_RIGHT` — so `#` is the one that acts. MENU used to open this too; a
+   tap on it now opens **הערות** and a *hold* opens this picker, so `#` and hold-MENU are the
+   two ways in.)*
 2. You get the **בחר מפרשים** ("choose commentators") checklist, in up to three groups:
    - **מפרשים** — the commentaries on this sefer. **On** by default.
    - **הספר שעליו זה מפרש** — if you are reading a commentary, the sefer it comments on. **On**
@@ -270,13 +294,21 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
   time. A missing or corrupt sidecar means *no meforshim*, never a crash.
 - `LibraryActivity` — folder-tree browser.
 - `ReaderActivity` — one segment per row (RTL); ◆ marks segments with meforshim from the chosen
-  commentators; `#`/MENU opens the picker; Volume ± sets font; typing `0`–`100` jumps by percent;
-  `*` opens the chapter TOC; remembers the last place per book. Rows render lazily
+  commentators; `#` or a held MENU opens the picker; Volume ± sets font; typing `0`–`100` jumps by
+  percent and typing a number then Up/Down walks that many segments (Ctrl-U); D-pad Left erases a
+  typed digit; `*` opens the chapter TOC; remembers the last place per book. Rows render lazily
   (`ReaderAdapter` in `Ui.kt`) — row N is always file line N+1, so line indices (and links) never
   move. The book is read off the main thread (header shows `טוען…`), since some seforim are tens
   of MB and reading them in `onCreate` would ANR.
 - `TocActivity` — the chapter TOC from `Otzaria.headings()`; auto-picks the primary heading level
-  (perek / siman) for the type-a-number jump.
+  (perek / siman) for the type-a-number jump, and reads the same typed number as a count for
+  Up/Down and as one digit at a time for D-pad Left.
+- `OtzActivity` — the base every screen extends, so **MENU is one key**: a tap opens הערות from
+  anywhere, a hold runs that screen's own MENU action. `MenuKey.kt` decides which, on key-up, by
+  how long the key was held; `MenuContractTest` fails the build if a screen stops inheriting it.
+- `TypeIn.kt` — the number typed ahead of an action (a percent, a chapter, a count of segments):
+  append / backspace / clear, plus `Jump`'s clamping arithmetic. Pure, so both are unit-tested
+  without a device.
 - `CommentatorsActivity` — the per-book ☑/☐ filter, grouped into commentaries / the sefer this one
   comments on / other cross-references, from the sidecar's per-commentator kind byte. Persisted
   per book title together with the roster it was made against.

@@ -5,6 +5,31 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **MENU is two keys: tap = הערות, hold = what MENU used to do.** The stack could only be
+  reached from the reader (and the meforshim panel), which makes it a second reading position
+  you have to leave the book to use. A tap on MENU now opens it from every screen — library,
+  reader, meforshim panel, contents, picker, help — and the per-screen MENU action moved to
+  holding the key: library = the folder path, reader = the commentator picker, and inside
+  הערות = close it. The split is decided on key-up by how long the key was down
+  (`MenuKey.kt`, unit-tested on a fake clock), and it is inherited from a new `OtzActivity`
+  base class rather than wired per screen, so a new screen cannot lose the tap —
+  `MenuContractTest` fails the build if one tries. Opening the list reorders an existing
+  instance to the front instead of stacking copies.
+- **A number typed ahead now counts segments as well as naming a percent.** Type `20` and
+  press Down and the highlight moves twenty segments (the numeric argument Emacs puts on
+  Ctrl-U); press OK and it is still `20%`. Clamped to the sefer at both ends, never wrapping,
+  and the move spends the number. The same works in the TOC, where the typed number already
+  named the Nth chapter and now also counts rows for Up/Down. The header prompt states both
+  readings while digits are pending.
+- **D-pad Left erases a typed digit.** Every screen that takes a number — the reader's percent
+  and count, the TOC's chapter — gets backspace from one place (`TypeIn`), so a mistyped `12`
+  meant to be `15` is fixed in place instead of retyped. `Back` still cancels the whole entry
+  in the reader, `#`/`*` still clear the TOC. Outside entry mode D-pad Left keeps its usual
+  meaning (remove from הערות). Back was also fixed while doing this: it cleared the pending
+  number and then *fell through* to the framework, which read the same press as "leave the
+  book" — so pressing Back to abandon a typo threw you out of the sefer. It now cancels and
+  stops there (`TypedKeys`/`TypedAction.CANCEL`, unit-tested), and Up/Down reach the count
+  through an `OnKeyListener` because the ListView consumes them before the Activity sees them.
 - Lazy loading for large books (rows render on demand; the file is read off the
   main thread, so a 31 MB / 26,776-line sefer no longer blocks `onCreate`).
 - Chapter table of contents (`*` key), parsed from `<h1..6>` headings.

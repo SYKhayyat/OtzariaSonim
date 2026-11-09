@@ -1,6 +1,5 @@
 package com.otzaria.sonim
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
@@ -19,7 +18,7 @@ import android.widget.TextView
  * renderer every other screen uses. English + LTR (unlike the Hebrew reader screens), so
  * it gets its own left-aligned adapter rather than the RTL [RowAdapter]. One section per row.
  */
-class HelpActivity : Activity() {
+class HelpActivity : OtzActivity() {
 
     private lateinit var list: ListView
 
@@ -36,17 +35,28 @@ class HelpActivity : Activity() {
             "copy of the text). It works on a line inside meforshim too &#8212; that pushes the " +
             "commentary's own line. Pushing the same thing again adds a second entry.<br>" +
             "<b>D-pad Left</b> removes it: one copy inside <b>הערות</b>, every copy everywhere " +
-            "else.<br><b>MENU</b> opens <b>הערות</b> from the reader or the meforshim screen, " +
-            "and closes it again from there. Up/Down moves, <b>OK</b> opens the meforshim on " +
-            "that reference, <b>*</b> cycles the order (newest / oldest / grouped by sefer).",
+            "else.<br><b>MENU &#8212; tap it and you are in הערות</b>, from every screen there " +
+            "is: the library, the reader, the meforshim panel, the contents, the picker, this " +
+            "page.<br><b>Hold MENU</b> (about half a second) and you get what MENU used to do " +
+            "on that screen instead: the library folder path, the commentator picker in the " +
+            "reader, and closing the list from inside <b>הערות</b>.<br>" +
+            "Up/Down moves inside the list, <b>OK</b> opens the meforshim on that reference, " +
+            "<b>*</b> cycles the order (newest / oldest / grouped by sefer).",
         "<h2>Getting around a big sefer</h2><b>Type a number</b> (0&#8211;100) to enter a percent " +
-            "of the book — it shows live in the header. <b>OK</b> jumps there, <b>Back</b> cancels " +
-            "(stays put). 0 = the very start, 100 = the end.<br>" +
-            "<b>*</b> — chapter table of contents (perek / siman). Inside it, type a number to jump " +
-            "to the Nth chapter.<br>Each book reopens where you left off.",
+            "of the book &#8212; it shows live in the header. <b>OK</b> jumps there, <b>Back</b> " +
+            "cancels (stays put). 0 = the very start, 100 = the end.<br>" +
+            "<b>Type a number, then Up or Down</b> &#8212; moves that many segments at once, the " +
+            "way Ctrl-U works in Emacs. It stops at either end of the sefer rather than wrapping. " +
+            "The header shows the number and both of its meanings while it is typed.<br>" +
+            "<b>D-pad Left</b> erases the last digit typed, so a mistyped number is fixed where it " +
+            "stands instead of retyped.<br>" +
+            "<b>*</b> &#8212; chapter table of contents (perek / siman). Inside it, type a number to " +
+            "jump to the Nth chapter; Up/Down then walk that many headings, D-pad Left erases a " +
+            "digit and <b>#</b> clears the number.<br>Each book reopens where you left off.",
         "<h2>Font size</h2>Volume Up / Down — bigger / smaller. Remembered.",
-        "<h2>In the library</h2>Up / Down — move, <b>OK</b> — open, <b>Back</b> — up one folder.<br>" +
-            "<b>MENU</b> — change the library folder path. <b>#</b> — this help."
+        "<h2>In the library</h2>Up / Down &#8212; move, <b>OK</b> &#8212; open, <b>Back</b> " +
+            "&#8212; up one folder.<br><b>Hold MENU</b> &#8212; change the library folder path " +
+            "(a tap opens <b>הערות</b>, as everywhere). <b>#</b> &#8212; this help."
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {

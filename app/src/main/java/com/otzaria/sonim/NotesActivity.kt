@@ -1,6 +1,5 @@
 package com.otzaria.sonim
 
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -29,10 +28,12 @@ import android.widget.Toast
  *                  stack, not a set),
  *  - D-pad Left    drop the one copy under the highlight,
  *  - `*`           cycle the order: newest / oldest / grouped by sefer,
- *  - MENU, Back    return to where you came from,
+ *  - Back          return to where you came from,
+ *  - MENU (hold)   also return — tapping MENU is what OPENS this screen everywhere
+ *                  else, so here it only says you are already looking at it,
  *  - Volume ±      font size.
  */
-class NotesActivity : Activity() {
+class NotesActivity : OtzActivity() {
 
     private lateinit var list: ListView
     private lateinit var header: TextView
@@ -189,9 +190,22 @@ class NotesActivity : Activity() {
         Toast.makeText(this, "הוסר מהערות (${after.size})", Toast.LENGTH_SHORT).show()
     }
 
+    /**
+     * Tap MENU here and nothing should happen — you are already where the key goes.
+     * Saying so is better than a key that seems dead, and better still than closing
+     * the list, because tapping MENU elsewhere opens it.
+     */
+    override fun onMenuTap() {
+        Toast.makeText(this, "כבר בהערות · החזקה = יציאה", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Held MENU: the close that MENU used to do from inside this screen. */
+    override fun onMenuHold() {
+        finish()
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
-            KeyEvent.KEYCODE_MENU -> { finish(); return true }
             KeyEvent.KEYCODE_DPAD_RIGHT -> { pushCopy(); return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> { removeSelected(); return true }
             KeyEvent.KEYCODE_STAR -> {

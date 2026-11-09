@@ -1,7 +1,6 @@
 package com.otzaria.sonim
 
 import android.Manifest
-import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -19,7 +18,7 @@ import android.widget.Toast
 import java.io.File
 
 /** Browse the אוצריא folder tree. D-pad up/down, center = open, back = up a level. */
-class LibraryActivity : Activity() {
+class LibraryActivity : OtzActivity() {
 
     private lateinit var header: TextView
     private lateinit var list: ListView
@@ -101,7 +100,7 @@ class LibraryActivity : Activity() {
         entries = (dir.listFiles()?.toList() ?: emptyList())
             .filter { it.isDirectory || it.name.endsWith(".txt", ignoreCase = true) }
             .sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-        header.text = "${dir.name}   # עזרה"
+        header.text = "${dir.name}   MENU הערות · # עזרה"
         val labels: List<CharSequence> = entries.map { f ->
             if (f.isDirectory) "📁  " + f.name else f.name.removeSuffix(".txt")
         }
@@ -138,12 +137,16 @@ class LibraryActivity : Activity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
-            KeyEvent.KEYCODE_MENU -> { promptForRoot(); return true }
             KeyEvent.KEYCODE_POUND -> {
                 startActivity(Intent(this, HelpActivity::class.java)); return true
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    /** Held MENU: set the library folder — the one thing that used to live on MENU. */
+    override fun onMenuHold() {
+        promptForRoot()
     }
 
     private fun promptForRoot() {
