@@ -134,6 +134,49 @@ object Settings {
         resolveResume(lastPosition(ctx, bookTitle), lastPositionText(ctx, bookTitle), lines)
 
     /**
+     * Where the reader opens, and why.
+     *
+     * Two ways in: asked to resume, or SENT to a line — which is how הערות opens a
+     * sefer, because a reference names a line and not a place to pick up from.
+     *
+     * [landed] is true for the second: the reader is a visitor at somebody else's
+     * line, and a visitor does not move the place the reader left.
+     *
+     * [lost] is only ever true for the first: the saved place could not be found, so
+     * the reader is told rather than silently sent to the top.
+     *
+     * [pos] is -1 when there is nothing to select: the reader opens at the top with
+     * no highlight, which is what opening a book for the first time has always done.
+     *
+     * Pure, so it can be tested without a device.
+     */
+    data class Open(val pos: Int, val landed: Boolean, val lost: Boolean)
+
+    fun resolveOpen(saved: Resume?, atLine: Int, lineCount: Int): Open {
+        if (atLine in 1..lineCount) return Open(atLine - 1, landed = true, lost = false)
+        if (saved != null && !saved.lost) return Open(saved.pos, landed = false, lost = false)
+        return Open(-1, landed = false, lost = saved?.lost == true)
+    }
+
+    /**
+     * May this visit move the reader's remembered place?
+     *
+     * A reader who was sent to a line and looked at it and left has NOT moved their
+     * place: the place they left is still the place they left, and the reference
+     * they came to check is not where they were reading.
+     *
+     * A reader who read ON from that line HAS moved it, and deserves the same
+     * remembering as any other reading.
+     *
+     * Pure, so it can be tested without a device.
+     */
+    fun maySavePlace(landedAt: Int, current: Int): Boolean {
+        if (landedAt < 0) return true                 // an ordinary visit: the place moves
+        if (current < 0) return false                // landed, but nothing is highlighted
+        return current != landedAt                   // landed and read on: the place moves
+    }
+
+    /**
      * What the reader would SEE on that line, not the bytes it is stored as.
      *
      * Fingerprinting the raw line looks equivalent and is not. Re-packing the

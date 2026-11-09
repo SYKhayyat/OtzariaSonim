@@ -85,18 +85,38 @@ object Notes {
     fun countOf(entries: List<Entry>, path: String, line: Int): Int =
         entries.count { it.path == path && it.line == line }
 
-    /** The three orders `*` cycles through, with the words the header shows. */
+    /**
+     * The orders the list can be shown in, with the words the header shows.
+     *
+     * There are four of them and they are chosen from the little menu that opens
+     * inside הערות (a tap on MENU), not cycled with a key: the key that cycled them
+     * (`*`) now opens the sefer the highlighted reference points into, which is the
+     * thing the stack was missing.
+     */
     enum class Order(val title: String) {
         NEWEST("חדש למעלה"),
         OLDEST("ישן למעלה"),
-        BY_SEFER("לפי ספר");
-
-        fun next(): Order = when (this) {
-            NEWEST -> OLDEST
-            OLDEST -> BY_SEFER
-            BY_SEFER -> NEWEST
-        }
+        BY_SEFER("לפי ספר"),
+        BY_SEFER_BY_LINE("לפי ספר ולפי שורה")
     }
+
+    /**
+     * One row of the little menu inside הערות.
+     *
+     * The menu is a pure list so that the screen cannot show one set of orders and
+     * the core lay out another: the menu is built from [menu], and [menu] is built
+     * from [Order] alone.
+     */
+    sealed class MenuItem(val label: String) {
+        /** Show the list in this order. */
+        data class ByOrder(val order: Order) : MenuItem(order.title)
+        /** Close הערות and go back to the seforim. */
+        data object BackToSefarim : MenuItem("חזרה לספרים")
+    }
+
+    /** The menu inside הערות: the four orders, then the way out. */
+    fun menu(): List<MenuItem> =
+        Order.entries.map { MenuItem.ByOrder(it) } + MenuItem.BackToSefarim
 
     /** A rendered line of the list: either a sefer heading or a reference. */
     sealed class Row {
@@ -105,13 +125,15 @@ object Notes {
     }
 
     /**
-     * Rows for [entries] in [order]. Only [Order.BY_SEFER] emits [Row.Group] rows;
+     * Rows for [entries] in [order]. Only the grouped orders emit [Row.Group] rows;
      * callers must treat those as labels, not choices (the list is built so the
-     * D-pad cannot land on them — see RowAdapter's `enabled`).
+     * D-pad cannot land on them — see [NotesAdapter]).
      *
      * Groups are ordered by their newest entry, so pushing into a sefer lifts that
      * sefer to the top of the grouping. Inside a group the newest is first, the same
-     * way the flat NEWEST order reads.
+     * way the flat NEWEST order reads — except in [Order.BY_SEFER_BY_LINE], which
+     * reads a sefer the way the sefer itself is read: from its first line to its
+     * last.
      */
     fun layout(entries: List<Entry>, order: Order): List<Row> = when (order) {
         Order.NEWEST -> entries.sortedByDescending { it.seq }.map { Row.Item(it) }
@@ -123,6 +145,20 @@ object Notes {
             for ((book, es) in ordered) {
                 out.add(Row.Group(book, es.size))
                 es.sortedByDescending { it.seq }.forEach { out.add(Row.Item(it)) }
+            }
+            out
+        }
+        Order.BY_SEFER_BY_LINE -> {
+            // Grouped by PATH, not by title: two different files can share a title,
+            // and their line numbers have nothing to do with each other. The
+            // heading still shows the title, which is what the reader knows the
+            // book by.
+            val groups = entries.groupBy { it.path }
+            val ordered = groups.entries.sortedByDescending { (_, es) -> es.maxOf { it.seq } }
+            val out = ArrayList<Row>(entries.size + ordered.size)
+            for ((path, es) in ordered) {
+                out.add(Row.Group(es.first().book, es.size))
+                es.sortedWith(compareBy({ it.line }, { it.seq })).forEach { out.add(Row.Item(it)) }
             }
             out
         }

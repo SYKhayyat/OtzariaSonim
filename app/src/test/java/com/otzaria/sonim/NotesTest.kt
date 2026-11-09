@@ -70,15 +70,34 @@ class NotesTest {
     // ------------------------------------------------------------------ orders
 
     @Test
-    fun starCyclesThroughEveryOrderAndComesBack() {
-        var o = Notes.Order.NEWEST
-        val seen = mutableListOf(o)
-        repeat(3) { o = o.next(); seen.add(o) }
+    fun theMenuOffersExactlyTheFourOrdersAndTheWayOut() {
+        val menu = Notes.menu()
 
+        val orders = menu.filterIsInstance<Notes.MenuItem.ByOrder>().map { it.order }
         assertEquals(
-            listOf(Notes.Order.NEWEST, Notes.Order.OLDEST, Notes.Order.BY_SEFER, Notes.Order.NEWEST),
-            seen
+            listOf(
+                Notes.Order.NEWEST,
+                Notes.Order.OLDEST,
+                Notes.Order.BY_SEFER,
+                Notes.Order.BY_SEFER_BY_LINE
+            ),
+            orders
         )
+        assertEquals("every order is offered, and only once", Notes.Order.entries.size, orders.size)
+        assertEquals(
+            "the way out is the last thing in the menu",
+            Notes.MenuItem.BackToSefarim,
+            menu.last()
+        )
+    }
+
+    @Test
+    fun everyOrderInTheMenuHasItsOwnLabel() {
+        val labels = Notes.menu().map { it.label }
+        assertEquals("no two menu rows say the same thing", labels.size, labels.toSet().size)
+        for (o in Notes.Order.entries) {
+            assertTrue("the menu says what ${o.name} is", labels.contains(o.title))
+        }
     }
 
     @Test
@@ -113,6 +132,39 @@ class NotesTest {
         assertEquals(listOf(4, 2), rows.subList(1, 3).map { (it as Notes.Row.Item).entry.line })
         assertEquals(Notes.Row.Group("בראשית", 2), rows[3])
         assertEquals(listOf(3, 1), rows.subList(4, 6).map { (it as Notes.Row.Item).entry.line })
+    }
+
+    @Test
+    fun groupedBySeferAndByLineReadsTheSeferTheWayTheSeferIsRead() {
+        var entries = emptyList<Notes.Entry>()
+        entries = Notes.add(entries, "a/בראשית.txt", 30, "בראשית")
+        entries = Notes.add(entries, "a/בראשית.txt", 10, "בראשית")
+        entries = Notes.add(entries, "a/בראשית.txt", 20, "בראשית")
+        entries = Notes.add(entries, "b/שמות.txt", 5, "שמות")
+
+        val rows = Notes.layout(entries, Notes.Order.BY_SEFER_BY_LINE)
+
+        // שמות was touched last, so its group comes first; inside a group the lines
+        // come in the order they appear in the book, not in the order they were pushed.
+        assertEquals(Notes.Row.Group("שמות", 1), rows[0])
+        assertEquals(listOf(5), rows.subList(1, 2).map { (it as Notes.Row.Item).entry.line })
+        assertEquals(Notes.Row.Group("בראשית", 3), rows[2])
+        assertEquals(listOf(10, 20, 30), rows.subList(3, 6).map { (it as Notes.Row.Item).entry.line })
+    }
+
+    @Test
+    fun twoFilesWithTheSameTitleAreStillTwoGroups() {
+        var entries = emptyList<Notes.Entry>()
+        entries = Notes.add(entries, "a/x.txt", 7, "x")
+        entries = Notes.add(entries, "b/x.txt", 3, "x")
+
+        val rows = Notes.layout(entries, Notes.Order.BY_SEFER_BY_LINE)
+
+        // Same title, different books: their line numbers have nothing to do with
+        // each other, so grouping them together would order them by an accident.
+        assertEquals(2, rows.count { it is Notes.Row.Group })
+        assertEquals(listOf(3, 7), rows.filterIsInstance<Notes.Row.Item>()
+            .map { it.entry.line }.sorted())
     }
 
     @Test

@@ -22,7 +22,7 @@ import android.widget.Toast
  * | meforshim panel | הערות | — |
  * | תוכן (TOC) | הערות | — |
  * | picker, help | הערות | — |
- * | הערות itself | (already there) | close it |
+ * | הערות itself | its little menu (the orders, and the way out) | close it |
  *
  * This is a base class rather than a helper each screen calls because the contract
  * is then structural: a new screen inherits the tap by being a screen, and cannot

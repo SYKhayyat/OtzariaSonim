@@ -132,8 +132,95 @@ class ResumeTest {
         assertTrue(r.lost)
     }
 
-    // ------------------------------------------- the per-book commentator choice
+    // ------------------------------------------- opening AT a line (from הערות)
 
+    /**
+     * הערות opens the sefer a reference names, at the line the reference names.
+     * A line, not a place to pick up from — so the saved place is not even looked
+     * at.
+     */
+    @Test
+    fun aReaderSentToALineLandsOnThatLine() {
+        val saved = Settings.Resume(500, lost = false)
+        val open = Settings.resolveOpen(saved, atLine = 1200, lineCount = 3000)
+
+        assertEquals(1199, open.pos)
+        assertTrue("this visit was sent to a line", open.landed)
+        assertFalse(open.lost)
+    }
+
+    /** A line past the end of the sefer is not a line: the saved place wins. */
+    @Test
+    fun aLineThatIsNotThereFallsBackToTheSavedPlace() {
+        val saved = Settings.Resume(500, lost = false)
+        val open = Settings.resolveOpen(saved, atLine = 9000, lineCount = 3000)
+
+        assertEquals(500, open.pos)
+        assertFalse(open.landed)
+    }
+
+    /** A book never opened, sent to a line: the line still wins. */
+    @Test
+    fun aLineBeatsNoSavedPlace() {
+        val open = Settings.resolveOpen(null, atLine = 7, lineCount = 100)
+
+        assertEquals(6, open.pos)
+        assertTrue(open.landed)
+    }
+
+    /** Nothing at all: the top of the sefer, and no highlight to restore. */
+    @Test
+    fun aBookWithNeitherPlaceNorLineOpensAtTheTop() {
+        val open = Settings.resolveOpen(null, atLine = -1, lineCount = 100)
+
+        assertEquals(-1, open.pos)
+        assertFalse(open.landed)
+        assertFalse(open.lost)
+    }
+
+    /** A place that was lost is still worth saying out loud. */
+    @Test
+    fun aLostPlaceIsStillReported() {
+        val open = Settings.resolveOpen(Settings.Resume(0, lost = true), atLine = -1, lineCount = 100)
+
+        assertTrue("the reader must be told, not silently moved", open.lost)
+    }
+
+    // ------------------------------------------- does this visit move the place?
+
+    /**
+     * An ordinary visit: the reader opened a sefer and read it, so the place moves.
+     */
+    @Test
+    fun anOrdinaryVisitMovesThePlace() {
+        assertTrue(Settings.maySavePlace(landedAt = -1, current = 40))
+    }
+
+    /**
+     * A visit that was sent to a line and left without moving: the place the reader
+     * left is still the place they left.
+     */
+    @Test
+    fun aVisitThatOnlyLookedDoesNotMoveThePlace() {
+        assertFalse(Settings.maySavePlace(landedAt = 1199, current = 1199))
+    }
+
+    /** A visit that read ON from the line it was sent to: the place moves. */
+    @Test
+    fun aVisitThatReadOnDoesMoveThePlace() {
+        assertTrue(Settings.maySavePlace(landedAt = 1199, current = 1200))
+    }
+
+    /**
+     * A visit that was sent to a line and left before anything was highlighted: the
+     * place must not move, and above all must not become the top of the sefer.
+     */
+    @Test
+    fun aVisitThatLeftBeforeHighlightingDoesNotMoveThePlace() {
+        assertFalse(Settings.maySavePlace(landedAt = 1199, current = -1))
+    }
+
+    // ------------------------------------------- the per-book commentator choice
     private val yorehDeah = listOf(
         Otzaria.Commentator("שפתי כהן על שולחן ערוך יורה דעה", Otzaria.KIND_MEFARESH),
         Otzaria.Commentator("טורי זהב על שולחן ערוך יורה דעה", Otzaria.KIND_MEFARESH),

@@ -129,12 +129,22 @@ object Otzaria {
      */
     fun lineAt(path: String, line: Int): String? {
         if (line < 1) return null
-        val abs = if (path.startsWith("/")) path else File(root, path).absolutePath
+        val abs = absolute(path)
         val f = File(abs)
         if (!f.isFile) return null
         return if (f.length() <= BIG_FILE_BYTES) linesOf(abs).getOrNull(line - 1)
         else collectLines(abs, setOf(line))[line]
     }
+
+    /**
+     * The absolute path of a stored path.
+     *
+     * A note stores its path relative to [root] (see [relativize]), so anything that
+     * opens a book from a note has to put the root back on. A path that is already
+     * absolute is left alone — the library can live anywhere the phone can reach.
+     */
+    fun absolute(path: String): String =
+        if (path.startsWith("/")) path else File(root, path).absolutePath
 
     /**
      * A UTF-8 byte-order mark, which Kotlin's `readLines` hands back as the first

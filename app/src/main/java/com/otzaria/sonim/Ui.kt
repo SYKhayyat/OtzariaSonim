@@ -194,6 +194,17 @@ class ReaderAdapter(
     // Bounded so a huge book can't pin unbounded rendered spans.
     private val cache = LruCache<Int, CharSequence>(512)
 
+    /**
+     * The row the reader was SENT to, when it was sent to one — from הערות, which
+     * opens a sefer at the line a reference names.
+     *
+     * The D-pad highlight alone cannot say this: the reader opens the book and the
+     * row under the crosshair is the one they were sent to, but a reader who has not
+     * touched a key yet cannot tell "sent here" from "opened here". So the row is
+     * drawn with a band of its own.
+     */
+    var landedAt: Int = -1
+
     fun refresh(newCommented: Set<Int>) {
         commented = newCommented
         cache.evictAll()
@@ -225,10 +236,18 @@ class ReaderAdapter(
         }
         tv.textSize = sizeSp
         tv.text = row(position)
+        // The row the reader was sent to carries a band of its own, so "you were
+        // brought here" is visible and not merely implied by the crosshair.
+        tv.setBackgroundColor(if (position == landedAt) LANDED_BAND else Color.TRANSPARENT)
         // The ◆ is the one thing this screen exists to tell you and the one thing
         // a screen reader cannot get from the glyph.
         tv.contentDescription =
             Ui.describeRow(Ui.html(lines[position]), commented.contains(position + 1))
         return tv
+    }
+
+    private companion object {
+        /** The band behind the row a visit was sent to. */
+        const val LANDED_BAND = 0xFFFFF3C4.toInt()
     }
 }

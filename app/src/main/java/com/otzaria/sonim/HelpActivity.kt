@@ -41,7 +41,11 @@ class HelpActivity : OtzActivity() {
             "on that screen instead: the library folder path, the commentator picker in the " +
             "reader, and closing the list from inside <b>הערות</b>.<br>" +
             "Up/Down moves inside the list, <b>OK</b> opens the meforshim on that reference, " +
-            "<b>*</b> cycles the order (newest / oldest / grouped by sefer).",
+            "and <b>*</b> opens <b>the sefer that reference points into, at that line</b> &#8212; " +
+            "the line is banded, and the place that book was left at is not moved by the visit." +
+            "<br><b>Tap MENU inside הערות</b> and a small menu opens: the four orders (newest " +
+            "first, oldest first, grouped by sefer, grouped by sefer in book order) and " +
+            "<b>חזרה לספרים</b>, which closes the list.",
         "<h2>Getting around a big sefer</h2><b>Type a number</b> (0&#8211;100) to enter a percent " +
             "of the book &#8212; it shows live in the header. <b>OK</b> jumps there, <b>Back</b> " +
             "cancels (stays put). 0 = the very start, 100 = the end.<br>" +

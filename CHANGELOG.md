@@ -5,6 +5,18 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **From הערות you can now get back to the sefer, and the list has a menu.** The stack held
+  pointers into seforim and there was no key that opened one: `OK` opened the meforshim on the
+  reference, `*` cycled the order, and that was all. Now `*` opens **the sefer that reference
+  points into, at the line it names** — the reader lands there with the line banded, and the
+  visit does **not** overwrite the place that book was left at (a visitor does not move the
+  reader's place — unless you read on from there, which is a different thing). A **tap on MENU
+  inside הערות** opens a small menu instead of saying "you are
+  already here": the four orders (newest first, oldest first, grouped by sefer, and grouped by
+  sefer **in book order** — the last one is new) and **חזרה לספרים**, which closes the list. The
+  order is chosen from the menu, so `*` is free for the sefer. The menu is a panel of the
+  screen and not a dialog, because this phone has no touchscreen: the D-pad has to walk it.
+  The opening logic is pure (`Settings.resolveOpen`), so it is unit-tested without a device.
 - **הערות shows the whole segment, drawn the way the reader draws it.** The row used to show
   a 60-character clip of the line, flattened to plain text — so a stack of references read as
   one clipped line per entry while the reader showed the whole box. The row is now drawn from

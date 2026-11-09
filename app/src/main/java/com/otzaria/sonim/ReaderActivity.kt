@@ -45,6 +45,22 @@ class ReaderActivity : OtzActivity() {
     private var noteCount = 0
 
     /**
+     * The line to open at, when the reader was opened AT a line rather than at its
+     * beginning — which is how הערות opens it: the reference names a line, and the
+     * reader lands on it.
+     *
+     * 1-based, like a note's line. -1 means "no particular line".
+     *
+     * A visit that starts here does NOT move the book's remembered place: the reader
+     * came to look at a reference, not to resume a book, and the place they left
+     * must still be the place they left. So [onPause] does not save either.
+     */
+    private var atLine = -1
+
+    /** The row the reader landed on, when it was sent to one. -1 otherwise. */
+    private var landedAt = -1
+
+    /**
      * The number typed ahead of an action: OK reads it as a percent of the book,
      * Up/Down read it as a count of segments. One pending number with two meanings is
      * deliberate — it is the same digits, and the header says both.
@@ -60,6 +76,7 @@ class ReaderActivity : OtzActivity() {
 
         path = intent.getStringExtra("path") ?: run { finish(); return }
         bookTitle = Otzaria.titleFromPath(path)
+        atLine = intent.getIntExtra("atLine", -1)
 
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         header = TextView(this).apply {
@@ -142,14 +159,21 @@ class ReaderActivity : OtzActivity() {
                 // The saved place is checked against the text that was there, because
                 // the library is re-downloadable and a bare line index does not
                 // survive a sefer gaining a line upstream.
+                //
+                // A reader opened AT a line (from הערות) ignores the saved place
+                // entirely: it was sent to a line, not asked to resume.
                 val saved = Settings.resume(this, bookTitle, lines)
-                if (saved != null && !saved.lost) list.setSelection(saved.pos)
-                if (saved?.lost == true) {
+                val open = Settings.resolveOpen(saved, atLine, lines.size)
+                landedAt = if (open.landed) open.pos else -1
+                adapter?.landedAt = landedAt
+                if (open.pos >= 0) list.setSelection(open.pos)
+                adapter?.notifyDataSetChanged()
+                if (open.lost) {
                     // Said out loud. A reader who is silently 300 lines from where
                     // they stopped concludes the app loses their place at random.
                     Toast.makeText(this, "הספר השתנה מאז — חזרה להתחלה", Toast.LENGTH_LONG).show()
                 }
-                updateHeader(list.firstVisiblePosition)
+                updateHeader(if (open.landed) open.pos else list.firstVisiblePosition)
             }
         }.start()
     }
@@ -331,7 +355,17 @@ class ReaderActivity : OtzActivity() {
     override fun onPause() {
         super.onPause()
         if (lines.isEmpty()) return
-        val pos = list.firstVisiblePosition.coerceIn(0, lines.size - 1)
+        // A visit that was sent to a line (from הערות) must not move the book's
+        // remembered place: the reader came to look at a reference, and the place
+        // they left is still the place they left. Reading ON from that line is a
+        // different thing, and does move it.
+        val sel = list.selectedItemPosition
+        if (!Settings.maySavePlace(landedAt, sel)) return
+        // Where the reader is now: the row under the highlight. For a visit that
+        // landed on a line this is the only position that means anything — the top
+        // of the viewport is wherever the scroll happened to leave it.
+        val pos = if (landedAt >= 0) sel.coerceIn(0, lines.size - 1)
+                  else list.firstVisiblePosition.coerceIn(0, lines.size - 1)
         Settings.setLastPosition(this, bookTitle, pos, lines[pos])
     }
 

@@ -128,12 +128,17 @@ keep reading somewhere else.
   the reader or the meforshim panel it drops **every** copy of that reference. Pressing it on
   something that is not on the list says `לא בהערות` and changes nothing.
 - **Tap MENU** and you are in **הערות** — from every screen, not just the reader. Inside the
-  list, **hold MENU** closes it (a tap there only says you are already looking at it), and
-  **Back** returns as always. (`#` stays the commentator picker.)
+  list, **tap MENU** opens a small menu (the four orders, and **חזרה לספרים**, which closes the
+  list), **hold MENU** closes it too, and **Back** returns as always. (`#` stays the commentator
+  picker.)
 - Inside **הערות**: **Up/Down** moves, **Center (OK)** opens the meforshim on that reference
-  exactly as it would from the reader, **`*`** cycles the order — **חדש למעלה** (newest
-  first), **ישן למעלה**, or **לפי ספר** (grouped by sefer, with a `— sefer · N —` heading
-  per group, which the D-pad skips).
+  exactly as it would from the reader, and **`*`** opens **the sefer that reference points into,
+  at that line** — the reader lands there with the line banded, and the visit does **not**
+  overwrite the place that book was left at (reading on from that line does move it).
+- The orders are chosen from the little menu, not cycled with a key: **חדש למעלה** (newest
+  first), **ישן למעלה** (oldest first), **לפי ספר** (grouped by sefer, with a `— sefer · N —`
+  heading per group, which the D-pad skips), and **לפי ספר ולפי שורה** (the same grouping, but
+  inside a sefer the lines come in the order they appear in the book).
 - The header of **הערות** says `הערות · N · <order>` and, under it, **where the highlighted
   item is from** (`מ: בראשית · פרק א`, or a mefaresh's own reference such as `רש"י על
   בראשית א,ה`).
