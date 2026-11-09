@@ -140,10 +140,12 @@ keep reading somewhere else.
 
 **An entry is a pointer, not a copy.** What is stored is the book's path under the library
 root, the line number, the "where from" label and an insertion counter — no text at all. The
-preview under each row is read out of the sefer when the list is drawn (in the background, so
+segment under each row is read out of the sefer when the list is drawn (in the background, so
 the screen is instant), which means the list always shows what the sefer says *now*: re-pack
-or re-download the library and the references still resolve to the same words. The list lives
-in the app's preferences and survives closing the app.
+or re-download the library and the references still resolve to the same words. It is drawn the
+way the reader draws it — the same HTML, so a bold word is bold and a heading is a heading —
+and the whole segment, not a clip of it. The list lives in the app's preferences and survives
+closing the app.
 
 ### Choosing which meforshim appear
 This is a **per-book filter**, like Otzaria's commentator list.
@@ -317,8 +319,8 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
 - `Notes.kt` / `NotesActivity` — **הערות**, the reference stack: an entry is a path + line +
   a "where from" label and nothing else, saved as one preference string. `Notes` holds the
   pure core (encode/decode, push/drop, the three orders and the grouping) and is
-  unit-tested; the screen reads each line out of the library in the background to draw its
-  preview.
+  unit-tested; the screen reads each line out of the library in the background and draws it
+  the way the reader draws it (`NotesAdapter`, in `Ui.kt`).
 - `HelpActivity` — the on-device controls cheat-sheet (English/LTR), reached with `#` from the
   library.
 - `Ui.kt` — `RowAdapter` (the shared RTL, adjustable-size list adapter) + the minimal

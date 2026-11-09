@@ -4,3 +4,5 @@ number,title,url,D,R,why,risk
 3,[Low/perf] Every reader row parses HTML twice,https://github.com/SYKhayyat/OtzariaSonim/issues/3,1,2,Compute row HTML once; wasted CPU only,CPU waste
 4,[Low/bug] Meforshim resolution on main thread,https://github.com/SYKhayyat/OtzariaSonim/issues/4,2,3,Move sidecar resolution bg; jank is visible,Visible jank
 5,[Low/perf] Library listing on main thread,https://github.com/SYKhayyat/OtzariaSonim/issues/5,2,3,Off-thread listFiles+sort; 6618-book jank is visible,Visible jank
+6,[Medium/bug] הערות shows a 60-char clip of the segment not the whole box,https://github.com/SYKhayyat/OtzariaSonim/issues/6,2,2,Show the whole segment as the reader shows it; the clip is visible not silent,Visible clip
+7,[Medium/feature] From הערות no way back to the sefer and no menu,https://github.com/SYKhayyat/OtzariaSonim/issues/7,3,2,Add a way back to the sefer at that line plus an order menu inside the stack,Missing capability

@@ -168,24 +168,26 @@ class NotesTest {
     // ---------------------------------------------------------------- preview
 
     @Test
-    fun previewIsRenderingNotACopy() {
-        // The list shows the opening of the line; it must come out as plain text.
-        assertEquals("ויאמר ה׳ אל אברם", Notes.preview("<b>ויאמר</b>&nbsp;ה׳   אל <i>אברם</i>"))
+    fun plainIsRenderingNotACopy() {
+        // The spoken form of a row; it must come out as plain text.
+        assertEquals("ויאמר ה׳ אל אברם", Notes.plain("<b>ויאמר</b>&nbsp;ה׳   אל <i>אברם</i>"))
     }
 
     @Test
     fun anInlineTagDoesNotSplitAWord() {
         // The corpus wraps part of a vocalised word in <b>/<i>; a space here would be
         // visible in every preview of a pasuk that has a commentator anchor.
-        assertEquals("בְּרֵאשִׁ֖ית", Notes.preview("בְּ<b>רֵאשִׁ֖ית</b>"))
+        assertEquals("בְּרֵאשִׁ֖ית", Notes.plain("בְּ<b>רֵאשִׁ֖ית</b>"))
         // A block boundary is a real break, so it must stay a space.
-        assertEquals("פרק א (א) בראשית", Notes.preview("<h2>פרק א</h2><b>(א)</b> בראשית"))
+        assertEquals("פרק א (א) בראשית", Notes.plain("<h2>פרק א</h2><b>(א)</b> בראשית"))
     }
 
     @Test
-    fun previewIsBoundedAndHandlesEmptyLines() {
-        assertEquals("", Notes.preview(""))
-        assertEquals("", Notes.preview("<h2></h2>"))
-        assertEquals(60, Notes.preview("א".repeat(500)).length)
+    fun plainKeepsTheWholeLineAndHandlesEmptyOnes() {
+        assertEquals("", Notes.plain(""))
+        assertEquals("", Notes.plain("<h2></h2>"))
+        // The row shows the whole segment: the flattener used for the spoken form
+        // must not cut it either, or the reader is told less than the eye sees.
+        assertEquals(500, Notes.plain("א".repeat(500)).length)
     }
 }

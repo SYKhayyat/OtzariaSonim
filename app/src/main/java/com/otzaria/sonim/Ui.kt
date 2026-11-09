@@ -91,6 +91,92 @@ class RowAdapter(
 }
 
 /**
+ * The rows of הערות: a bold "where from" line and then the segment the entry points
+ * at, drawn the way the reader draws a segment — the same HTML, so a bold word is
+ * bold and a heading is a heading here too.
+ *
+ * Rendering is lazy (as in [ReaderAdapter]) and cached, because a stack can hold as
+ * many references as the reader has segments and every one of them is a line of
+ * markup to parse. The text itself is not held here: [segments] is the map of
+ * pointers' segments, filled by the screen as it reads them out of the library, and
+ * the map is read at draw time.
+ *
+ * Group rows (the `— sefer · N —` headings) are labels, not choices, so the D-pad
+ * skips them: this phone has no touchscreen to skip past one with.
+ */
+class NotesAdapter(
+    private val ctx: Context,
+    private var rows: List<Notes.Row>,
+    /** seq -> the raw segment that entry points at. */
+    private val segments: Map<Long, String>,
+    var sizeSp: Float = 20f
+) : BaseAdapter() {
+
+    // Bounded, and smaller than the reader's: a row here is a WHOLE segment, so a
+    // cached row is a whole segment — the reader's rows are segments too, but the
+    // stack can hold as many of them at once as the reader has lines.
+    private val cache = LruCache<Int, CharSequence>(16)
+
+    /** New rows: the list changed, so every drawn row is stale. */
+    fun setRows(newRows: List<Notes.Row>) {
+        rows = newRows
+        cache.evictAll()
+        notifyDataSetChanged()
+    }
+
+    override fun getCount() = if (rows.isEmpty()) 1 else rows.size
+
+    override fun getItem(position: Int): Any = rows.getOrNull(position) ?: ""
+
+    override fun getItemId(position: Int): Long = position.toLong()
+
+    /** The empty list has one row, and it says so; it is not a choice either. */
+    override fun areAllItemsEnabled() = false
+
+    override fun isEnabled(position: Int) =
+        rows.isNotEmpty() && rows.getOrNull(position) is Notes.Row.Item
+
+    private fun row(position: Int): CharSequence {
+        cache.get(position)?.let { return it }
+        val out: CharSequence = when (val r = rows.getOrNull(position)) {
+            null -> Ui.html("הערות ריקות.<br>לחצו ימינה על קטע בספר, או על שורה במפרשים, כדי להוסיף.")
+            is Notes.Row.Group -> Ui.html("<b>— ${r.book} · ${r.count} —</b>")
+            is Notes.Row.Item -> {
+                val e = r.entry
+                val s = SpannableStringBuilder().append(Ui.html("<b>${e.where}</b>"))
+                val segment = segments[e.seq]
+                if (!segment.isNullOrEmpty()) s.append("\n").append(Ui.html(segment))
+                s
+            }
+        }
+        cache.put(position, out)
+        return out
+    }
+
+    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+        val tv = (convertView as? TextView) ?: TextView(ctx).apply {
+            setPadding(28, 22, 28, 22)
+            setTextColor(Color.BLACK)
+            gravity = Gravity.RIGHT
+            textDirection = View.TEXT_DIRECTION_RTL
+            setLineSpacing(0f, 1.15f)
+        }
+        tv.textSize = sizeSp
+        tv.text = row(position)
+        // The spoken form is the whole segment in plain words: the markup is for the
+        // eye, and a screen reader would otherwise read it out as punctuation.
+        tv.contentDescription = when (val r = rows.getOrNull(position)) {
+            is Notes.Row.Item ->
+                segments[r.entry.seq]?.let { "${r.entry.where}. ${Notes.plain(it)}" }
+                    ?: r.entry.where
+            is Notes.Row.Group -> "${r.book}, ${r.count}"
+            else -> null
+        }
+        return tv
+    }
+}
+
+/**
  * The reader's segment list. Unlike [RowAdapter] it does NOT pre-render the whole book:
  * each row's HTML is parsed lazily in [getView] (and cached) as it scrolls into view, so
  * even a 34 MB sefer opens instantly. A ◆ prefix marks segments with chosen meforshim.

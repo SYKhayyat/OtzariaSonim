@@ -3,7 +3,6 @@ package com.otzaria.sonim
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.text.SpannableStringBuilder
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -37,13 +36,13 @@ class NotesActivity : OtzActivity() {
 
     private lateinit var list: ListView
     private lateinit var header: TextView
-    private var adapter: RowAdapter? = null
+    private var adapter: NotesAdapter? = null
 
     private var entries: List<Notes.Entry> = emptyList()
     private var rows: List<Notes.Row> = emptyList()
     private var order = Notes.Order.NEWEST
 
-    /** seq -> first line of that reference, read from the library when the screen opens. */
+    /** seq -> the raw line of that reference, read from the library when the screen opens. */
     private val previews = HashMap<Long, String>()
     private var previewToken = 0
 
@@ -106,33 +105,23 @@ class NotesActivity : OtzActivity() {
 
     /** Rebuild the adapter rows only — the entries and their order stay as they are. */
     private fun showRows(select: Int) {
-        val texts: List<CharSequence> = if (entries.isEmpty()) {
-            listOf(Ui.html("הערות ריקות.<br>לחצו ימינה על קטע בספר, או על שורה במפרשים, כדי להוסיף."))
+        val a = adapter
+        if (a != null) {
+            a.setRows(rows)
         } else {
-            rows.map { r ->
-                when (r) {
-                    is Notes.Row.Group -> Ui.html("<b>— ${r.book} · ${r.count} —</b>")
-                    is Notes.Row.Item -> {
-                        val e = r.entry
-                        val s = SpannableStringBuilder().append(Ui.html("<b>${e.where}</b>"))
-                        previews[e.seq]?.let { if (it.isNotEmpty()) s.append("\n").append(it) }
-                        s
-                    }
-                }
-            }
+            adapter = NotesAdapter(this, rows, previews, Settings.fontSize(this))
+            list.adapter = adapter
         }
-        adapter = RowAdapter(
-            this, texts, adapter?.sizeSp ?: Settings.fontSize(this),
-            enabled = { i -> !entries.isEmpty() && rows.getOrNull(i) is Notes.Row.Item }
-        )
-        list.adapter = adapter
         list.requestFocus()
         if (!entries.isEmpty()) list.setSelection(select.coerceIn(0, maxOf(0, rows.size - 1)))
     }
 
     /**
-     * Read the first line of every reference in the background, so the rows carry a
+     * Read the segment of every reference in the background, so the rows carry a
      * live preview without the list ever owning a copy of anyone's text.
+     *
+     * The text is kept RAW — with its markup — because the row is drawn the way the
+     * reader draws it. The plain words are made from it when the row is spoken.
      */
     private fun resolvePreviews() {
         val todo = entries.filter { !previews.containsKey(it.seq) }
@@ -142,7 +131,7 @@ class NotesActivity : OtzActivity() {
             val got = HashMap<Long, String>()
             for (e in todo) {
                 val text = Otzaria.lineAt(e.path, e.line) ?: continue
-                got[e.seq] = Notes.preview(text)
+                got[e.seq] = text
             }
             if (got.isEmpty()) return@Thread
             runOnUiThread {

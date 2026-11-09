@@ -5,6 +5,13 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **הערות shows the whole segment, drawn the way the reader draws it.** The row used to show
+  a 60-character clip of the line, flattened to plain text — so a stack of references read as
+  one clipped line per entry while the reader showed the whole box. The row is now drawn from
+  the raw line with the same HTML the reader uses (bold is bold, a heading is a heading) and
+  the whole of it, wrapping over as many screen lines as the text needs. The entry is still a
+  pointer: the segment is read out of the library when the row is drawn, so the list cannot
+  drift from the book it points into. `Notes.plain` (the spoken form) keeps the whole line too.
 - **MENU is two keys: tap = הערות, hold = what MENU used to do.** The stack could only be
   reached from the reader (and the meforshim panel), which makes it a second reading position
   you have to leave the book to use. A tap on MENU now opens it from every screen — library,

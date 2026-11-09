@@ -49,11 +49,14 @@ object Notes {
     private val spaceRx = Regex("\\s+")
 
     /**
-     * One line of library text, flattened for a list row: markup off, runs of space
-     * collapsed, capped. Applied when the row is DRAWN — it is a rendering of the
-     * reference, never a copy of it.
+     * One line of library text, flattened for reading aloud: markup off, runs of
+     * space collapsed. NOT capped — the row shows the whole segment, and the
+     * description of it says the whole segment.
+     *
+     * The flattening is for the spoken form only. The row itself is drawn from the
+     * raw line, so it looks like the reader's box rather than like this.
      */
-    fun preview(text: String, limit: Int = 60): String {
+    fun plain(text: String): String {
         // Block tags become a space; INLINE tags become nothing at all. Replacing
         // every tag with a space splits real words: this corpus wraps parts of a
         // vocalised word in tags, so "בְּרֵאשִׁ֖ית" came out as "בְּ רֵאשִׁ֖ית".
@@ -62,7 +65,7 @@ object Notes {
         // collapse does the rest.
         val plain = tagRx.replace(blockRx.replace(text, " "), "")
             .replace("&nbsp;", " ").replace('\u00A0', ' ')
-        return spaceRx.replace(plain, " ").trim().take(limit)
+        return spaceRx.replace(plain, " ").trim()
     }
 
     /**
