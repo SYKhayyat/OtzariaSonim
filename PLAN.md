@@ -10,4 +10,4 @@ Worker loop: top unchecked item only, fix + resolving test, commit, check off, s
 - [x] #2 line-cache race bg vs UI. (Medium)
 - [x] #4 meforshim on main thread. (Low)
 - [x] #3 double HTML parse. (Low)
-- [ ] #5 library list on main. (Low)
+- [x] #5 library list on main. (Low)

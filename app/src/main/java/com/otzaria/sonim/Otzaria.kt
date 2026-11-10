@@ -88,17 +88,6 @@ object Otzaria {
         headingCache.clear()
     }
 
-    /**
-     * Is the library actually usable? `isDirectory` alone is not enough: with
-     * READ_EXTERNAL_STORAGE denied the directory still *exists*, so the old check
-     * passed and the app drew an empty screen with no explanation. Listing it is the
-     * only thing that distinguishes "not there" from "there but not readable".
-     */
-    fun isReady(): Boolean = textsDir.isDirectory && textsDir.list() != null
-
-    /** True when the library is present but unreadable — i.e. the permission was denied. */
-    fun isUnreadable(): Boolean = textsDir.isDirectory && textsDir.list() == null
-
     /** filename without the trailing `.txt`, from a Windows- or unix-style path. */
     fun titleFromPath(path: String): String {
         val name = path.replace('\\', '/').substringAfterLast('/')

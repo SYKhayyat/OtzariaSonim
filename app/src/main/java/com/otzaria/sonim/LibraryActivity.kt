@@ -23,7 +23,16 @@ class LibraryActivity : OtzActivity() {
     private lateinit var header: TextView
     private lateinit var list: ListView
     private var currentDir: File = File("/")
-    private var entries: List<File> = emptyList()
+    private var entries: List<Library.Entry> = emptyList()
+
+    /**
+     * Whether the library was readable when it was last listed.
+     *
+     * Back used to ask "is the library still there?" by listing it — 6,618 names off
+     * the SD card, on the UI thread, on every Back press. The answer is known: it
+     * was read when the folder was opened.
+     */
+    private var libraryReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +58,7 @@ class LibraryActivity : OtzActivity() {
         )
         setContentView(rootView)
 
-        list.setOnItemClickListener { _, _, pos, _ -> open(entries[pos]) }
+        list.setOnItemClickListener { _, _, pos, _ -> open(entries[pos].file) }
 
         if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
             != PackageManager.PERMISSION_GRANTED
@@ -86,36 +95,67 @@ class LibraryActivity : OtzActivity() {
     }
 
     private fun start() {
-        when {
-            Otzaria.isReady() -> showDir(Otzaria.textsDir)
-            // the folder is there but unlistable — that is a denied permission, not a
-            // wrong path, and asking for a path again would never fix it
-            Otzaria.isUnreadable() -> denied()
-            else -> promptForRoot()
+        // The אוצריא folder holds every book on the phone — 6,618 of them on an SD
+        // card — and reading its names is disk I/O. It is read in the background.
+        showDir(Otzaria.textsDir) { listing ->
+            when (listing.state) {
+                // the folder is there but unlistable — that is a denied permission,
+                // not a wrong path, and asking for a path again would never fix it
+                Library.State.UNREADABLE -> denied()
+                Library.State.MISSING -> promptForRoot()
+                Library.State.READY -> {
+                    libraryReady = true
+                    showEntries(listing.entries)
+                }
+            }
         }
     }
 
-    private fun showDir(dir: File) {
+    /**
+     * List [dir] off the main thread and show it.
+     *
+     * `File.listFiles()` on the אוצריא folder reads 6,618 names off the SD card. It
+     * used to happen on the UI thread, in `showDir`, and the folder was listed
+     * *again* on every Back press, because "is the library still there?" was
+     * answered by listing it.
+     */
+    private fun showDir(dir: File, deliver: (Library.Listing) -> Unit = {}) {
         currentDir = dir
-        entries = (dir.listFiles()?.toList() ?: emptyList())
-            .filter { it.isDirectory || it.name.endsWith(".txt", ignoreCase = true) }
-            .sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-        header.text = "${dir.name}   MENU הערות · # עזרה"
-        val labels: List<CharSequence> = entries.map { f ->
-            if (f.isDirectory) "📁  " + f.name else f.name.removeSuffix(".txt")
+        header.text = "${dir.name} — טוען…"
+        Library.Loader(
+            list = { Library.listing(it) },
+            post = { action -> runOnUiThread { action() } }
+        ).load(dir) { listing ->
+            if (isFinishing) return@load
+            deliver(listing)
         }
-        // The folder emoji is announced as "file folder" in English, mid-Hebrew.
-        list.adapter = RowAdapter(this, labels, 18f, describe = { i ->
-            val f = entries[i]
-            if (f.isDirectory) "תיקייה, ${f.name}" else "ספר, ${f.name.removeSuffix(".txt")}"
-        })
+    }
+
+    /** Draw the rows of a folder that was listed. */
+    private fun showEntries(entries: List<Library.Entry>) {
+        this.entries = entries
+        header.text = "${currentDir.name}   MENU הערות · # עזרה"
+        val labels: List<CharSequence> = entries.map { it.label }
+        list.adapter = RowAdapter(
+            this,
+            labels,
+            18f,
+            describe = { i -> entries[i].spoken }
+        )
         list.requestFocus()
         if (entries.isNotEmpty()) list.setSelection(0)
     }
 
     private fun open(f: File) {
         if (f.isDirectory) {
-            showDir(f)
+            currentDir = f
+            showDir(f) { listing ->
+                when (listing.state) {
+                    Library.State.UNREADABLE -> denied()
+                    Library.State.MISSING -> showEntries(emptyList())
+                    Library.State.READY -> showEntries(listing.entries)
+                }
+            }
         } else {
             startActivity(
                 Intent(this, ReaderActivity::class.java).putExtra("path", f.absolutePath)
@@ -125,11 +165,15 @@ class LibraryActivity : OtzActivity() {
 
     override fun onBackPressed() {
         val parent = currentDir.parentFile
-        if (Otzaria.isReady() &&
+        if (libraryReady &&
             currentDir.absolutePath != Otzaria.textsDir.absolutePath &&
             parent != null
         ) {
-            showDir(parent)
+            currentDir = parent
+            showDir(parent) { listing ->
+                if (listing.state == Library.State.READY) showEntries(listing.entries)
+                else showEntries(emptyList())
+            }
         } else {
             super.onBackPressed()
         }
@@ -157,12 +201,19 @@ class LibraryActivity : OtzActivity() {
             .setView(input)
             .setPositiveButton("שמור") { _, _ ->
                 Otzaria.saveRoot(this, input.text.toString())
-                if (Otzaria.isReady()) {
-                    showDir(Otzaria.textsDir)
-                } else {
-                    Toast.makeText(
-                        this, "לא נמצא: " + Otzaria.textsDir.path, Toast.LENGTH_LONG
-                    ).show()
+                // Whether the new path holds a library is the same question, and the
+                // same listing — so it is asked in the background too.
+                showDir(Otzaria.textsDir) { listing ->
+                    when (listing.state) {
+                        Library.State.READY -> {
+                            libraryReady = true
+                            currentDir = Otzaria.textsDir
+                            showEntries(listing.entries)
+                        }
+                        else -> Toast.makeText(
+                            this, "לא נמצא: " + Otzaria.textsDir.path, Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
             .setNegativeButton("ביטול", null)

@@ -5,6 +5,21 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **The library screen no longer lists the books on the main thread.** Opening **אוצריא**
+  listed the folder on the UI thread — `File.listFiles()` over 6,618 book names, read off
+  the SD card — and it did it *again* on every **Back** press, because "is the library
+  still there?" was answered by listing the whole library: `Otzaria.isReady()` and
+  `isUnreadable()` each called `textsDir.list()`. Two fixes, one listing. The folder's
+  state *and* its contents now come from a single listing in a new pure core
+  (`Library.kt`) — `READY` / `UNREADABLE` / `MISSING`, folders first then books by name,
+  `.txt` only — and it is read in the background through the same `Background.kt` the
+  TOC and the meforshim panel use, with `טוען…` in the header until the rows land.
+  The `isReady()`/`isUnreadable()` trap is gone from `Otzaria.kt`: a method that answers
+  "is the library there?" by listing the whole library is a trap for the next caller.
+  Unit-tested: the listing's order and contents, the three states (including a folder
+  that exists but cannot be read — a denied permission, which `isDirectory` alone cannot
+  see), a test that the listing happens off the calling thread, and a source guard that
+  the screen never lists a folder itself.
 - **A reader row is parsed once, not twice.** Every segment the reader drew had its markup
   parsed **twice**: once for the text on the screen, and again in `getView` for the content
   description — the text a screen reader says. `Html.fromHtml` is a real parser, and a reader

@@ -64,6 +64,9 @@ Everything is the **D-pad + center (OK) + Back**, plus a couple of number/volume
 - **Back** — go up one folder (at the top it exits the app).
 - The categories and folders mirror **exactly the Otzaria structure** — the app reflects
   whatever folder tree is on the phone (see *Loading the library*).
+- A folder is listed **in the background** — the אוצריא folder holds thousands of books
+  and reading their names off the SD card is disk I/O — so the header says `טוען…` until
+  the rows land.
 - **Hold MENU** — change the library folder path. (A *tap* on MENU opens **הערות**, like it
   does on every other screen — see below.)
 - **`#` key** — an on-device **Help** cheat-sheet of all the controls (baked into the APK;
