@@ -77,10 +77,7 @@ object Toc {
     ) {
         /** Read the book at [path] in the background and deliver its model. */
         fun load(path: String, deliver: (Model) -> Unit) {
-            Thread {
-                val model = read(path)
-                post { deliver(model) }
-            }.start()
+            Background({ read(path) }, post).run(deliver)
         }
     }
 }

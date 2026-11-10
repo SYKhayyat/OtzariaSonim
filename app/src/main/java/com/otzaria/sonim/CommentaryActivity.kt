@@ -58,52 +58,63 @@ class CommentaryActivity : OtzActivity() {
         )
         setContentView(rootView)
 
-        val mefs = Otzaria.meforshimFor(book, line, Settings.activeSelection(this, book))
-        header.text = when {
-            mefs.isEmpty() -> "אין מפרשים"
-            else -> "מפרשים ($book)\nימין = הערה · MENU הערות"
-        }
-
-        // [Otzaria.meforshimFor] returns מפרשים, then the base text, then
-        // cross-references. A heading goes in wherever that changes — without one,
-        // a reader of משנה ברורה sees the Shulchan Arukh se'if under the word
-        // "מפרשים" and is being told something untrue about it.
-        val rows = ArrayList<CharSequence>(mefs.size + 2)
-        var lastKind = -1
-        for (m in mefs) {
-            if (m.kind != lastKind) {
-                lastKind = m.kind
-                sectionTitle(m.kind)?.let {
-                    rows.add(Ui.html("<b>— $it —</b>"))
-                    items.add(null)
-                }
-            }
-            rows.add(
-                SpannableStringBuilder()
-                    .append(Ui.html("<b>" + m.ref + "</b>"))
-                    .append("\n")
-                    .append(Ui.html(m.content))
-            )
-            items.add(m)
-        }
-        adapter = RowAdapter(
-            this, rows, Settings.fontSize(this),
-            // Section labels are not choices: without this the D-pad stops on them and
-            // this phone has no touchscreen to skip past with (BUILDER.md S3).
-            enabled = { i -> items.getOrNull(i) != null }
-        )
-        list.adapter = adapter
-        list.requestFocus()
-        val first = items.indexOfFirst { it != null }
-        if (first >= 0) list.setSelection(first)
+        load(book, line)
     }
 
-    /** null for מפרשים — the header already says that, and the common case is a
-     * screen of nothing else, which should look exactly as it always did. */
-    private fun sectionTitle(kind: Int): String? = when (kind) {
-        Otzaria.KIND_BASE -> "מקור"
-        Otzaria.KIND_RELATED -> "קישורים נוספים"
-        else -> null
+    /**
+     * Resolve the meforshim off the main thread.
+     *
+     * [Otzaria.meforshimFor] opens the sidecar and reads the target files: disk
+     * I/O, and for a big commentary seconds of it. It used to happen in `onCreate`,
+     * on the UI thread, which froze the screen — and the reader had already learned
+     * this and loads its book in the background.
+     *
+     * The list stays empty and the header says "טוען…" until the rows land.
+     */
+    private fun load(book: String, line: Int) {
+        header.text = "מפרשים — טוען…"
+        Commentary.Loader(
+            resolve = { b, l, selected -> Otzaria.meforshimFor(b, l, selected) },
+            post = { action -> runOnUiThread { action() } }
+        ).load(book, line, Settings.activeSelection(this, book)) { rows ->
+            if (isFinishing) return@load
+            // [Otzaria.meforshimFor] returns מפרשים, then the base text, then
+            // cross-references. A heading goes in wherever that changes — without one,
+            // a reader of משנה ברורה sees the Shulchan Arukh se'if under the word
+            // "מפרשים" and is being told something untrue about it.
+            val texts = ArrayList<CharSequence>(rows.size)
+            for (r in rows) {
+                when (r) {
+                    is Commentary.Row.Section -> {
+                        texts.add(Ui.html("<b>— ${r.title} —</b>"))
+                        items.add(null)
+                    }
+                    is Commentary.Row.Item -> {
+                        texts.add(
+                            SpannableStringBuilder()
+                                .append(Ui.html("<b>" + r.ref + "</b>"))
+                                .append("\n")
+                                .append(Ui.html(r.content))
+                        )
+                        items.add(r.meforish)
+                    }
+                }
+            }
+            header.text = when {
+                items.isEmpty() -> "אין מפרשים"
+                else -> "מפרשים ($book)\nימין = הערה · MENU הערות"
+            }
+            adapter = RowAdapter(
+                this, texts, Settings.fontSize(this),
+                // Section labels are not choices: without this the D-pad stops on them and
+                // this phone has no touchscreen to skip past with (BUILDER.md S3).
+                enabled = { i -> items.getOrNull(i) != null }
+            )
+            list.adapter = adapter
+            list.requestFocus()
+            val first = items.indexOfFirst { it != null }
+            if (first >= 0) list.setSelection(first)
+        }
     }
 
     private fun selected(): Otzaria.Meforish? =

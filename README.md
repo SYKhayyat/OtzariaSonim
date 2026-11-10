@@ -328,6 +328,9 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
   per book title together with the roster it was made against.
 - `CommentaryActivity` — the chosen meforshim on one segment, stacked; each line is a
   selectable reference, so D-pad Right can push that commentary's own line onto הערות.
+  The links are resolved **off the main thread** (the sidecar is opened and the target
+  files are read in the background); the header says `טוען…` until they land. The rows
+  themselves are built by `Commentary.kt` — a pure core, unit-tested without a device.
 - `Notes.kt` / `NotesActivity` — **הערות**, the reference stack: an entry is a path + line +
   a "where from" label and nothing else, saved as one preference string. `Notes` holds the
   pure core (encode/decode, push/drop, the three orders and the grouping) and is

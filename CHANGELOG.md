@@ -5,6 +5,15 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **The meforshim panel no longer freezes while it resolves its links.** Opening a
+  segment's meforshim opened the sidecar and read the target files **on the UI thread**:
+  disk I/O, and for a big commentary seconds of a frozen screen. The resolution now
+  happens in the background, the header says `טוען…` until the rows land, and the rows
+  themselves are built by a new pure core (`Commentary.kt`) — where the "מקור" /
+  "קישורים נוספים" headings go, and which rows are choices — so it is unit-tested
+  without a device, including a test that the links are resolved off the calling thread.
+  The threading itself is one shared class (`Background.kt`), which the chapter TOC now
+  uses too.
 - **The caches are now safe to share between the background loader and the UI thread.** The reader
   reads a book on a background thread while the notes list and the meforshim panel read the same
   books on the UI thread, and all three met in three plain `LinkedHashMap`s **in access order** —
