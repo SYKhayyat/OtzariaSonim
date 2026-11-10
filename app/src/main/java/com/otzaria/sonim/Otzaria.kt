@@ -64,16 +64,15 @@ object Otzaria {
     private const val BIG_FILE_BYTES = 2_000_000L     // stream, don't cache, above this
     private const val IDX_CACHE_MAX = 4
 
-    private var cachedChars = 0
-    private val lineCache = object : LinkedHashMap<String, List<String>>(16, 0.75f, true) {}
-    private val idxCache = object : LinkedHashMap<String, BookIndex?>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, BookIndex?>) =
-            size > IDX_CACHE_MAX
-    }
-    private val headingCache = object : LinkedHashMap<String, List<Heading>>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Heading>>) =
-            size > IDX_CACHE_MAX
-    }
+    // The caches are shared between the background loader and the UI thread, so they
+    // are [LruCache] and not a plain LinkedHashMap: in access order a `get` is a
+    // write, and one map written from two threads hands back the wrong lines.
+    private val lineCache = LruCache<String, List<String>>(
+        maxWeight = CACHE_CHAR_BUDGET.toLong(),
+        weightOf = { lines -> lines.sumOf { it.length }.toLong() }
+    )
+    private val idxCache = LruCache<String, BookIndex?>(maxEntries = IDX_CACHE_MAX)
+    private val headingCache = LruCache<String, List<Heading>>(maxEntries = IDX_CACHE_MAX)
 
     fun loadRoot(ctx: Context) {
         root = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -84,7 +83,7 @@ object Otzaria {
         root = newRoot.trimEnd('/', '\\')
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_ROOT, root).apply()
-        lineCache.clear(); cachedChars = 0
+        lineCache.clear()
         idxCache.clear()
         headingCache.clear()
     }
@@ -173,26 +172,16 @@ object Otzaria {
     /**
      * All lines of a file, cached under a character budget (LRU). Monster files
      * (> [BIG_FILE_BYTES]) are read fresh but never retained, so they can't pin memory.
+     *
+     * The cache is shared with the background loader, so every step of it goes through
+     * [LruCache] — see [Cache] for why a plain map is not safe here.
      */
     fun linesOf(path: String): List<String> {
-        lineCache[path]?.let { return it }        // access-order bump
+        lineCache.get(path)?.let { return it }        // access-order bump
         val lines = readLines(path)
         val chars = lines.sumOf { it.length }
-        if (chars <= CACHE_CHAR_BUDGET) {
-            lineCache[path] = lines
-            cachedChars += chars
-            trimCache()
-        }
+        if (chars <= CACHE_CHAR_BUDGET) lineCache.put(path, lines, chars.toLong())
         return lines
-    }
-
-    private fun trimCache() {
-        val it = lineCache.entries.iterator()
-        while (cachedChars > CACHE_CHAR_BUDGET && lineCache.size > 1) {
-            val e = it.next()
-            cachedChars -= e.value.sumOf { s -> s.length }
-            it.remove()
-        }
     }
 
     /** Stream a file once, returning only the requested 1-based lines (for big targets). */
@@ -218,18 +207,17 @@ object Otzaria {
      * Pass [preloaded] lines when the caller already has the book in memory to avoid re-reading.
      */
     private val headingRx = Regex("^<h([1-6])>(.*)</h[1-6]>\\s*$")
-    fun headings(path: String, preloaded: List<String>? = null): List<Heading> {
-        headingCache[path]?.let { return it }
-        val src = preloaded ?: readLines(path)
-        val out = ArrayList<Heading>()
-        src.forEachIndexed { i, raw ->
-            val m = headingRx.find(raw.trim()) ?: return@forEachIndexed
-            val text = m.groupValues[2].replace(Regex("<[^>]*>"), "").trim()
-            out.add(Heading(m.groupValues[1].toInt(), text, i))
+    fun headings(path: String, preloaded: List<String>? = null): List<Heading> =
+        headingCache.getOrCompute(path) {
+            val src = preloaded ?: readLines(path)
+            val out = ArrayList<Heading>()
+            src.forEachIndexed { i, raw ->
+                val m = headingRx.find(raw.trim()) ?: return@forEachIndexed
+                val text = m.groupValues[2].replace(Regex("<[^>]*>"), "").trim()
+                out.add(Heading(m.groupValues[1].toInt(), text, i))
+            }
+            out
         }
-        headingCache[path] = out
-        return out
-    }
 
     // ---------------------------------------------------------------- sidecar
 
@@ -398,13 +386,14 @@ object Otzaria {
         }
     }
 
-    /** The sidecar for a book, cached. null when the book has no meforshim on this phone. */
-    fun indexFor(bookTitle: String): BookIndex? {
-        if (idxCache.containsKey(bookTitle)) return idxCache[bookTitle]
-        val ix = BookIndex.open(File(idxDir, "$bookTitle.idx"))
-        idxCache[bookTitle] = ix
-        return ix
-    }
+    /**
+     * The sidecar for a book, cached. null when the book has no meforshim on this phone.
+     *
+     * "No sidecar" is a cached answer too — otherwise every question about a book
+     * without meforshim pays for a file open that will never succeed.
+     */
+    fun indexFor(bookTitle: String): BookIndex? =
+        idxCache.getOrCompute(bookTitle) { BookIndex.open(File(idxDir, "$bookTitle.idx")) }
 
     /**
      * Every book linked from this one, in a stable order, each saying what it IS to

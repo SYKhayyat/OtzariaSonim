@@ -299,8 +299,10 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
   per-commentator bitmap answers *"which lines get a ◆"* from a small fixed read and whose line
   directory makes *"what is on line N"* a seek. Target paths are stored in the sidecar (no
   `filename → path` scan at runtime). Also parses `<h1..6>` headings for the TOC. Caches are
-  bounded (LRU by character budget); commentary targets over ~2 MB are streamed one line at a
-  time. A missing or corrupt sidecar means *no meforshim*, never a crash.
+  bounded (LRU by character budget) and **thread-safe** (`Cache.kt`) — the background loader
+  writes them while the UI thread reads them, and in access order a `get` is a write, so a plain
+  map there would hand back the wrong lines. Commentary targets over ~2 MB are streamed one line
+  at a time. A missing or corrupt sidecar means *no meforshim*, never a crash.
 - `LibraryActivity` — folder-tree browser.
 - `ReaderActivity` — one segment per row (RTL); ◆ marks segments with meforshim from the chosen
   commentators; `#` or a held MENU opens the picker; Volume ± sets font; typing `0`–`100` jumps by

@@ -5,6 +5,17 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **The caches are now safe to share between the background loader and the UI thread.** The reader
+  reads a book on a background thread while the notes list and the meforshim panel read the same
+  books on the UI thread, and all three met in three plain `LinkedHashMap`s **in access order** —
+  where a `get` is a write, because it moves the entry to the front of the map. A UI-thread read
+  landing in the middle of a loader-thread write could corrupt the map's internal links: the
+  symptom is not a crash but a cache that hands back the wrong lines, stops evicting, or hangs.
+  The three caches are now one `LruCache` (`Cache.kt`) that takes a single lock around every
+  operation — the map *and* the character accounting that goes with it, since a count and a map
+  that disagree make the budget a lie. The slow work (reading a book off the disk) still happens
+  outside the lock. Unit-tested: eviction order, the weight budget, and two threads hammering one
+  cache.
 - **The chapter TOC no longer freezes the app on a big sefer.** Opening the TOC parsed the
   whole book — every line, to find its `<h1..6>` headings — on the main thread: 31 MB and
   26,776 lines for ערוך השולחן, which is seconds of frozen screen and an ANR the system
