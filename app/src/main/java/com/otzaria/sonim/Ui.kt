@@ -6,7 +6,6 @@ import android.os.Build
 import android.text.Html
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -115,12 +114,12 @@ class NotesAdapter(
     // Bounded, and smaller than the reader's: a row here is a WHOLE segment, so a
     // cached row is a whole segment — the reader's rows are segments too, but the
     // stack can hold as many of them at once as the reader has lines.
-    private val cache = LruCache<Int, CharSequence>(16)
+    private val cache = LruCache<Int, CharSequence>(maxEntries = 16)
 
     /** New rows: the list changed, so every drawn row is stale. */
     fun setRows(newRows: List<Notes.Row>) {
         rows = newRows
-        cache.evictAll()
+        cache.clear()
         notifyDataSetChanged()
     }
 
@@ -192,7 +191,7 @@ class ReaderAdapter(
 ) : BaseAdapter() {
 
     // Bounded so a huge book can't pin unbounded rendered spans.
-    private val cache = LruCache<Int, CharSequence>(512)
+    private val cache = LruCache<Int, ReaderRow.Row>(maxEntries = 512)
 
     /**
      * The row the reader was SENT to, when it was sent to one — from הערות, which
@@ -207,7 +206,7 @@ class ReaderAdapter(
 
     fun refresh(newCommented: Set<Int>) {
         commented = newCommented
-        cache.evictAll()
+        cache.clear()
         notifyDataSetChanged()
     }
 
@@ -215,13 +214,14 @@ class ReaderAdapter(
     override fun getItem(position: Int): Any = lines[position]
     override fun getItemId(position: Int) = position.toLong()
 
-    private fun row(position: Int): CharSequence {
+    private fun row(position: Int): ReaderRow.Row {
         cache.get(position)?.let { return it }
-        val body = Ui.html(lines[position])
-        val out: CharSequence =
-            if (commented.contains(position + 1))
-                SpannableStringBuilder("${Ui.HAS_MEFORSHIM}  ").append(body)
-            else body
+        val out = ReaderRow.of(
+            line = lines[position],
+            hasMeforshim = commented.contains(position + 1),
+            parse = { Ui.html(it) },
+            join = { body, mark -> SpannableStringBuilder(mark).append(body) }
+        )
         cache.put(position, out)
         return out
     }
@@ -235,14 +235,17 @@ class ReaderAdapter(
             setLineSpacing(0f, 1.15f)
         }
         tv.textSize = sizeSp
-        tv.text = row(position)
+        // One parse, two uses: the row on the screen and the text spoken for it.
+        // The old code parsed the markup again here, for every row drawn.
+        val row = row(position)
+        tv.text = row.drawn
         // The row the reader was sent to carries a band of its own, so "you were
         // brought here" is visible and not merely implied by the crosshair.
         tv.setBackgroundColor(if (position == landedAt) LANDED_BAND else Color.TRANSPARENT)
         // The ◆ is the one thing this screen exists to tell you and the one thing
         // a screen reader cannot get from the glyph.
         tv.contentDescription =
-            Ui.describeRow(Ui.html(lines[position]), commented.contains(position + 1))
+            Ui.describeRow(row.spoken, commented.contains(position + 1))
         return tv
     }
 

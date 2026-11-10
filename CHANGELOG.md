@@ -5,6 +5,14 @@ today, see `README.md` and `SPEC.md`.
 
 ## Delivered
 
+- **A reader row is parsed once, not twice.** Every segment the reader drew had its markup
+  parsed **twice**: once for the text on the screen, and again in `getView` for the content
+  description — the text a screen reader says. `Html.fromHtml` is a real parser, and a reader
+  scrolls through thousands of rows, so every row paid for two parses to build a description
+  out of the parse that had already been done. A row is now one object (`ReaderRow.kt`) that
+  keeps both what is drawn and what is spoken, and the adapter reuses it. The mark that says
+  "there is meforshim here" is still drawn and still *not* spoken — a screen reader reads a
+  lozenge as nothing — and the unit test counts the parses.
 - **The meforshim panel no longer freezes while it resolves its links.** Opening a
   segment's meforshim opened the sidecar and read the target files **on the UI thread**:
   disk I/O, and for a big commentary seconds of a frozen screen. The resolution now

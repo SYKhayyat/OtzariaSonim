@@ -339,7 +339,10 @@ Plain files, no database. See **`SPEC.md`** for the verified data format and rul
 - `HelpActivity` — the on-device controls cheat-sheet (English/LTR), reached with `#` from the
   library.
 - `Ui.kt` — `RowAdapter` (the shared RTL, adjustable-size list adapter) + the minimal
-  `<h1>/<h2>/<h3>/<b>` → `Html.fromHtml` renderer used by every screen.
+  `<h1>/<h2>/<h3>/<b>` → `Html.fromHtml` renderer used by every screen. The reader's rows are
+  built by `ReaderRow.kt`: **one parse per row**, whose result is both what is drawn and what
+  is said for it (the old code parsed every segment's markup twice — once to draw it, once to
+  describe it).
 - `Settings.kt` — persisted font size, per-book commentator selection, and last place. A saved
   place is a line number into a library you may re-download, so it is stored with the first 40
   characters of its line; on reopen the text is checked, and if it moved, the reader scans ±200
